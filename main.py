@@ -133,134 +133,193 @@ def try_booking():
         except Exception:
             logging.info("Pas de bannière cookies")
 
-        # Attendre et trouver les créneaux
-        logging.info(f"🔍 Recherche des créneaux de {hour_str}...")
-        am_slots = WebDriverWait(driver, 10).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, f'div[data-system-start-time="{hour_str_minutes}"]'))
-        )
-        logging.info(f"✅ Trouvé {len(am_slots)} créneaux de {hour_str}")
-
-        for i, slot in enumerate(am_slots):
+        # Attendre que la page soit complètement chargée
+        time.sleep(2)
+        
+        # Méthode 1: Chercher directement tous les liens de réservation disponibles
+        logging.info(f"🔍 Recherche des créneaux disponibles à {hour_str}...")
+        
+        # D'abord essayer de trouver tous les liens de réservation
+        all_booking_links = driver.find_elements(By.CSS_SELECTOR, 'a.book-interval.not-booked')
+        logging.info(f"📊 Trouvé {len(all_booking_links)} créneaux disponibles au total")
+        
+        # Filtrer pour l'heure souhaitée
+        for link in all_booking_links:
             try:
-                booking_link = slot.find_element(By.CSS_SELECTOR, 'a.book-interval.not-booked')
-                cost_span = booking_link.find_element(By.CLASS_NAME, "cost")
-
-                if "£3.60" in cost_span.text or "£4.95" in cost_span.text:
-                    logging.info(f"✅ Créneau trouvé: {booking_link.text}")
-                    driver.execute_script("arguments[0].scrollIntoView(true);", booking_link)
+                # Vérifier si c'est pour la bonne heure
+                link_text = link.text
+                data_test_id = link.get_attribute('data-test-id')
+                
+                logging.info(f"🔍 Vérification du créneau: {link_text}")
+                
+                # Vérifier si c'est l'heure qu'on veut (10:00 dans ce cas)
+                if hour_str in link_text and ("£3.60" in link_text or "£4.95" in link_text or "£3.50" in link_text):
+                    logging.info(f"✅ Créneau trouvé pour {hour_str}: {link_text}")
+                    
+                    # Scroller jusqu'au lien
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", link)
                     time.sleep(1)
-                    booking_link.click()
-
+                    
+                    # Essayer de cliquer
+                    try:
+                        link.click()
+                    except:
+                        # Si le clic normal échoue, utiliser JavaScript
+                        driver.execute_script("arguments[0].click();", link)
+                    
+                    logging.info("✅ Cliqué sur le créneau")
                     take_screenshot("after_slot_click")
-
+                    
+                    # Attendre que la page suivante charge
+                    time.sleep(2)
+                    
                     # Sélection de la durée
                     try:
                         logging.info("⏱️ Sélection de la durée...")
-                        select2_selection = WebDriverWait(driver, 5).until(
-                            EC.element_to_be_clickable((By.CSS_SELECTOR, ".select2-selection"))
-                        )
-                        select2_selection.click()
-                        time.sleep(1)
-
-                        options = WebDriverWait(driver, 5).until(
-                            EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".select2-results__option"))
-                        )
-                        if len(options) >= 2:
-                            options[1].click()
-                        else:
-                            option_next_hour = WebDriverWait(driver, 5).until(
-                                EC.element_to_be_clickable((By.XPATH, f"//li[contains(text(), '{next_hour}')]"))
+                        
+                        # Chercher le select2 ou le select normal
+                        try:
+                            select2_selection = WebDriverWait(driver, 3).until(
+                                EC.element_to_be_clickable((By.CSS_SELECTOR, ".select2-selection"))
                             )
-                            option_next_hour.click()
-                        logging.info("✅ Durée sélectionnée")
+                            select2_selection.click()
+                            time.sleep(1)
+                            
+                            # Sélectionner la deuxième option (1 heure)
+                            options = driver.find_elements(By.CSS_SELECTOR, ".select2-results__option")
+                            if len(options) >= 2:
+                                options[1].click()
+                            logging.info("✅ Durée sélectionnée via Select2")
+                        except:
+                            # Fallback avec select standard
+                            try:
+                                duration_select = driver.find_element(By.ID, "booking-duration")
+                                Select(duration_select).select_by_index(1)
+                                logging.info("✅ Durée sélectionnée via select standard")
+                            except:
+                                logging.warning("⚠️ Impossible de sélectionner la durée, on continue...")
                     except Exception as e:
-                        logging.warning(f"Select2 failed, trying fallback: {e}")
-                        # Fallback avec select standard
-                        hidden_select = driver.find_element(By.ID, "booking-duration")
-                        Select(hidden_select).select_by_index(1)
-
+                        logging.warning(f"Sélection durée échouée: {e}")
+                    
                     # Continuer
-                    continue_btn = WebDriverWait(driver, 5).until(
-                        EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Continue')]"))
-                    )
-                    driver.execute_script("arguments[0].scrollIntoView(true);", continue_btn)
-                    time.sleep(1)
-                    continue_btn.click()
-                    logging.info("✅ Clicked Continue")
-
+                    try:
+                        continue_btn = WebDriverWait(driver, 5).until(
+                            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Continue')]"))
+                        )
+                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", continue_btn)
+                        time.sleep(1)
+                        continue_btn.click()
+                        logging.info("✅ Clicked Continue")
+                    except Exception as e:
+                        logging.error(f"Erreur au clic Continue: {e}")
+                        take_screenshot("continue_error")
+                        continue
+                    
                     take_screenshot("after_continue")
-
+                    time.sleep(2)
+                    
                     # Payer
-                    paynow_btn = WebDriverWait(driver, 5).until(
-                        EC.element_to_be_clickable((By.ID, "paynow"))
-                    )
-                    driver.execute_script("arguments[0].scrollIntoView(true);", paynow_btn)
-                    time.sleep(1)
-                    paynow_btn.click()
-                    logging.info("✅ Clicked Confirm and pay")
-
+                    try:
+                        paynow_btn = WebDriverWait(driver, 5).until(
+                            EC.element_to_be_clickable((By.ID, "paynow"))
+                        )
+                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", paynow_btn)
+                        time.sleep(1)
+                        paynow_btn.click()
+                        logging.info("✅ Clicked Confirm and pay")
+                    except Exception as e:
+                        logging.error(f"Erreur au clic Pay: {e}")
+                        take_screenshot("pay_error")
+                        continue
+                    
                     # Paiement Stripe
                     logging.info("💳 Paiement Stripe...")
                     time.sleep(3)  # Attendre que Stripe charge
-
                     take_screenshot("stripe_form")
-
-                    # Attendre les iframes
-                    iframes = WebDriverWait(driver, 10).until(
-                        EC.presence_of_all_elements_located((By.CSS_SELECTOR, "iframe[name^='__privateStripeFrame']"))
-                    )
-                    logging.info(f"✅ Trouvé {len(iframes)} iframes Stripe")
-
-                    # Numéro de carte
-                    driver.switch_to.frame(iframes[0])
-                    card_field = WebDriverWait(driver, 10).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cardnumber']"))
-                    )
-                    card_field.send_keys(card_number)
-                    driver.switch_to.default_content()
-                    logging.info("✅ Numéro de carte saisi")
-
-                    # Date d'expiration
-                    driver.switch_to.frame(iframes[1])
-                    expiry_field = WebDriverWait(driver, 10).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='exp-date']"))
-                    )
-                    expiry_field.send_keys(card_expiry)
-                    driver.switch_to.default_content()
-                    logging.info("✅ Date d'expiration saisie")
-
-                    # CVC
-                    driver.switch_to.frame(iframes[2])
-                    cvc_field = WebDriverWait(driver, 10).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cvc']"))
-                    )
-                    cvc_field.send_keys(card_cvc)
-                    driver.switch_to.default_content()
-                    logging.info("✅ CVC saisi")
-
-                    # Soumettre le paiement
-                    pay_button = WebDriverWait(driver, 10).until(
-                        EC.element_to_be_clickable((By.ID, "cs-stripe-elements-submit-button"))
-                    )
-                    driver.execute_script("arguments[0].scrollIntoView(true);", pay_button)
-                    time.sleep(1)
-                    pay_button.click()
-                    logging.info("✅ Paiement soumis!")
-
-                    # Attendre la confirmation
-                    WebDriverWait(driver, 20).until(EC.url_contains("confirmation"))
-                    take_screenshot("confirmation")
-                    logging.info("🎉 RÉSERVATION CONFIRMÉE!")
-                    return True
-
+                    
+                    try:
+                        # Attendre les iframes Stripe
+                        iframes = WebDriverWait(driver, 10).until(
+                            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "iframe[name^='__privateStripeFrame']"))
+                        )
+                        logging.info(f"✅ Trouvé {len(iframes)} iframes Stripe")
+                        
+                        # Numéro de carte
+                        driver.switch_to.frame(iframes[0])
+                        card_field = WebDriverWait(driver, 10).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cardnumber']"))
+                        )
+                        card_field.send_keys(card_number)
+                        driver.switch_to.default_content()
+                        logging.info("✅ Numéro de carte saisi")
+                        
+                        # Date d'expiration
+                        driver.switch_to.frame(iframes[1])
+                        expiry_field = WebDriverWait(driver, 10).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='exp-date']"))
+                        )
+                        expiry_field.send_keys(card_expiry)
+                        driver.switch_to.default_content()
+                        logging.info("✅ Date d'expiration saisie")
+                        
+                        # CVC
+                        driver.switch_to.frame(iframes[2])
+                        cvc_field = WebDriverWait(driver, 10).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cvc']"))
+                        )
+                        cvc_field.send_keys(card_cvc)
+                        driver.switch_to.default_content()
+                        logging.info("✅ CVC saisi")
+                        
+                        # Soumettre le paiement
+                        pay_button = WebDriverWait(driver, 10).until(
+                            EC.element_to_be_clickable((By.ID, "cs-stripe-elements-submit-button"))
+                        )
+                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", pay_button)
+                        time.sleep(1)
+                        pay_button.click()
+                        logging.info("✅ Paiement soumis!")
+                        
+                        # Attendre la confirmation
+                        WebDriverWait(driver, 20).until(EC.url_contains("confirmation"))
+                        take_screenshot("confirmation")
+                        logging.info("🎉 RÉSERVATION CONFIRMÉE!")
+                        return True
+                        
+                    except Exception as e:
+                        logging.error(f"Erreur paiement Stripe: {e}")
+                        take_screenshot("stripe_error")
+                        continue
+                    
             except Exception as e:
-                logging.warning(f"Créneau {i + 1} non disponible: {e}")
+                logging.warning(f"Erreur avec ce créneau: {e}")
                 continue
+        
+        # Méthode 2: Si aucun lien direct trouvé, chercher via les divs
+        if len(all_booking_links) == 0:
+            logging.info("🔍 Méthode alternative: recherche via les divs...")
+            am_slots = driver.find_elements(By.CSS_SELECTOR, f'div[data-system-start-time="{hour_str_minutes}"]')
+            logging.info(f"✅ Trouvé {len(am_slots)} divs pour {hour_str}")
+            
+            for i, slot in enumerate(am_slots):
+                try:
+                    # Chercher le lien dans le parent ou les éléments proches
+                    parent = slot.find_element(By.XPATH, "..")
+                    booking_link = parent.find_element(By.CSS_SELECTOR, 'a.book-interval.not-booked')
+                    
+                    if "£3.60" in booking_link.text or "£4.95" in booking_link.text:
+                        logging.info(f"✅ Créneau trouvé via div: {booking_link.text}")
+                        driver.execute_script("arguments[0].click();", booking_link)
+                        # ... continuer avec le reste du processus
+                        
+                except Exception as e:
+                    logging.warning(f"Div {i + 1} - pas de lien trouvé: {e}")
+                    continue
 
     except Exception as e:
-        logging.error(f"❌ Aucun créneau de {hour_str} trouvé: {e}")
-        take_screenshot("no_slots_error")
-
+        logging.error(f"❌ Erreur générale dans try_booking: {e}")
+        take_screenshot("booking_error")
+    
     return False
 
 
