@@ -73,6 +73,8 @@ def take_screenshot(name):
 
 
 def login_first(username, password):
+    print("username",username)
+    print("password",password)
     try:
         # Vérifier si déjà connecté
         if "Sign in" not in driver.page_source:
