@@ -1,0 +1,71 @@
+name: Book Tennis Court
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Date de réservation (YYYY-MM-DD)'
+        required: true
+        default: '2025-06-16'
+      hour:
+        description: 'Heure de réservation (7-21)'
+        required: true
+        default: '7'
+        type: choice
+        options:
+          - '7'
+          - '8'
+          - '9'
+          - '10'
+          - '11'
+          - '12'
+          - '13'
+          - '14'
+          - '15'
+          - '16'
+          - '17'
+          - '18'
+          - '19'
+          - '20'
+          - '21'
+
+jobs:
+  book-court:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install Chrome
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+    
+    - name: Install Python dependencies
+      run: |
+        pip install -r requirements.txt
+    
+    - name: Run booking script
+      env:
+        TENNIS_USERNAME: ${{ secrets.TENNIS_USERNAME }}
+        TENNIS_PASSWORD: ${{ secrets.TENNIS_PASSWORD }}
+        CARD_NUMBER: ${{ secrets.CARD_NUMBER }}
+        CARD_EXPIRY: ${{ secrets.CARD_EXPIRY }}
+        CARD_CVC: ${{ secrets.CARD_CVC }}
+        BOOKING_DATE: ${{ github.event.inputs.date }}
+        BOOKING_HOUR: ${{ github.event.inputs.hour }}
+      run: |
+        python main.py
+    
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: booking-logs
+        path: booking.log
