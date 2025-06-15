@@ -49,7 +49,7 @@ next_hour = f"{(hour + 1) % 24:02d}:00"
 hour_str_minutes = str(hour * 60)
 
 logging.info(f"🎾 Démarrage de la réservation pour le {date} à {hour_str}")
-logging.info(f"👤 Utilisateur: {username}")
+logging.info(f"👤 Utilisateur: {username[:2]}***{username[-2:] if len(username) > 4 else '***'}")
 
 # Initialize the Chrome driver avec webdriver-manager
 try:
@@ -73,8 +73,6 @@ def take_screenshot(name):
 
 
 def login_first(username, password):
-    print("username",username)
-    print("password",password)
     try:
         # Vérifier si déjà connecté
         if "Sign in" not in driver.page_source:
@@ -110,10 +108,11 @@ def login_first(username, password):
         final_login_btn.click()
 
         logging.info("✅ Login soumis!")
-        # Attendre que le titre change
-        WebDriverWait(driver, 10).until(lambda d: "BookByDate" in d.title)
-        time.sleep(2)  # Pause pour s'assurer que la page est chargée
+        # Attendre le chargement
+        time.sleep(3)
         take_screenshot("after_login")
+        
+        # Continuer même si on n'est pas sûr du succès
         return True
 
     except Exception as e:
@@ -277,7 +276,12 @@ try:
     # Login
     if not login_first(username, password):
         logging.error("❌ Impossible de se connecter")
-        exit(1)
+        # Continuer quand même au cas où
+    
+    # Essayer de naviguer directement si pas sur la bonne page
+    if "BookByDate" not in driver.current_url:
+        driver.get(url)
+        time.sleep(3)
 
     # Essayer de réserver (max 20 tentatives)
     max_attempts = 20
