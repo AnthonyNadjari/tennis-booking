@@ -6,66 +6,62 @@ on:
       date:
         description: 'Date de réservation (YYYY-MM-DD)'
         required: true
-        default: '2025-06-16'
+        default: ''
       hour:
         description: 'Heure de réservation (7-21)'
         required: true
         default: '7'
         type: choice
-        options:
-          - '7'
-          - '8'
-          - '9'
-          - '10'
-          - '11'
-          - '12'
-          - '13'
-          - '14'
-          - '15'
-          - '16'
-          - '17'
-          - '18'
-          - '19'
-          - '20'
-          - '21'
+        options: ['7','8','9','10','11','12','13','14','15','16','17','18','19','20','21']
 
 jobs:
   book-court:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.9'
+      - name: Set default date to today + 7 if empty
+        id: set-date
+        run: |
+          if [ -z "${{ github.event.inputs.date }}" ]; then
+            DATE=$(date -d "+7 days" "+%Y-%m-%d")
+          else
+            DATE="${{ github.event.inputs.date }}"
+          fi
+          echo "BOOKING_DATE=$DATE" >> "$GITHUB_ENV"
 
-    - name: Install Chrome
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y google-chrome-stable
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
 
-    - name: Install Python dependencies
-      run: |
-        pip install -r requirements.txt
+      - name: Install Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
 
-    - name: Run booking script
-      env:
-        TENNIS_USERNAME: ${{ secrets.TENNIS_USERNAME }}
-        TENNIS_PASSWORD: ${{ secrets.TENNIS_PASSWORD }}
-        CARD_NUMBER: ${{ secrets.CARD_NUMBER }}
-        CARD_EXPIRY: ${{ secrets.CARD_EXPIRY }}
-        CARD_CVC: ${{ secrets.CARD_CVC }}
-        BOOKING_DATE: ${{ github.event.inputs.date }}
-        BOOKING_HOUR: ${{ github.event.inputs.hour }}
-      run: |
-        python main.py
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
 
-    - name: Upload booking log
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: booking-log
-        path: booking.log
+      - name: Run booking script
+        env:
+          TENNIS_USERNAME: ${{ secrets.TENNIS_USERNAME }}
+          TENNIS_PASSWORD: ${{ secrets.TENNIS_PASSWORD }}
+          CARD_NUMBER: ${{ secrets.CARD_NUMBER }}
+          CARD_EXPIRY: ${{ secrets.CARD_EXPIRY }}
+          CARD_CVC: ${{ secrets.CARD_CVC }}
+          BOOKING_DATE: ${{ env.BOOKING_DATE }}
+          BOOKING_HOUR: ${{ github.event.inputs.hour }}
+        run: |
+          python main.py
+
+      - name: Upload booking log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: booking-log
+          path: booking.log
+          if-no-files-found: ignore
