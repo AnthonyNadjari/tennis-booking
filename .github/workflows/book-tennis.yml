@@ -65,7 +65,7 @@ jobs:
     
     - name: Upload logs
       if: always()
-      uses: actions/awalsh128/cache-apt-pkgs-action@v1.4.3
+      uses: awalsh128/cache-apt-pkgs-action@v1.4.3
       with:
         name: booking-logs
         path: booking.log
