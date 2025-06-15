@@ -36,23 +36,22 @@ card_number = os.environ.get('CARD_NUMBER', '5354562794845156')
 card_expiry = os.environ.get('CARD_EXPIRY', '04/30')
 card_cvc = os.environ.get('CARD_CVC', '666')
 date = os.environ.get('BOOKING_DATE', '2025-06-16')
-hour = int(os.environ.get('BOOKING_HOUR', '7'))
+hour = int(os.environ.get('BOOKING_HOUR', '10'))
 
 # Vérification des credentials
 if not username or not password:
     logging.error("❌ TENNIS_USERNAME ou TENNIS_PASSWORD non définis!")
     exit(1)
 
-# Format hour and convert to minutes (system time)
+# Conversion de l'heure en minutes système (format utilisé par le site)
+hour_system_minutes = hour * 60
 hour_str = f"{hour:02d}:00"
-next_hour = f"{(hour + 1) % 24:02d}:00"
-system_start_time = str(hour * 60)  # Convert hour to minutes for data-system-start-time
 
 logging.info(f"🎾 Démarrage de la réservation pour le {date} à {hour_str}")
-logging.info(f"⏰ Recherche des créneaux avec data-system-start-time='{system_start_time}'")
+logging.info(f"⏰ Heure système recherchée: {hour_system_minutes} minutes")
 logging.info(f"👤 Utilisateur: {username[:2]}***{username[-2:] if len(username) > 4 else '***'}")
 
-# Initialize the Chrome driver avec webdriver-manager
+# Initialize the Chrome driver
 try:
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     driver.set_window_size(1920, 1080)
@@ -80,22 +79,19 @@ def login_first(username, password):
             logging.info("✅ Déjà connecté!")
             return True
 
-        logging.info("🔐 Étape 1: Clic sur Sign in...")
-        sign_in_btn = WebDriverWait(driver, 10).until(
+        sign_in_btn = WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Sign in')]"))
         )
         sign_in_btn.click()
-        time.sleep(1)
+        time.sleep(0.5)
 
-        logging.info("🔐 Étape 2: Clic sur Login button...")
-        login_button = WebDriverWait(driver, 10).until(
+        login_button = WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Login')]"))
         )
         login_button.click()
-        time.sleep(1)
+        time.sleep(0.5)
 
-        logging.info("📝 Étape 3: Saisie des identifiants...")
-        username_field = WebDriverWait(driver, 10).until(
+        username_field = WebDriverWait(driver, 5).until(
             EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Username']"))
         )
         username_field.clear()
@@ -108,16 +104,12 @@ def login_first(username, password):
         final_login_btn = driver.find_element(By.XPATH, "//button[contains(text(), 'Log in')]")
         final_login_btn.click()
 
+        time.sleep(1)
         logging.info("✅ Login soumis!")
-        # Attendre le chargement
-        time.sleep(3)
-        take_screenshot("after_login")
-        
         return True
 
     except Exception as e:
         logging.error(f"❌ Échec du login: {e}")
-        take_screenshot("login_error")
         return False
 
 
@@ -125,277 +117,271 @@ def try_booking():
     try:
         # Accepter les cookies si nécessaire
         try:
-            accept_all_btn = WebDriverWait(driver, 3).until(
+            accept_all_btn = WebDriverWait(driver, 1).until(
                 EC.element_to_be_clickable((By.CLASS_NAME, "osano-cm-accept-all"))
             )
             accept_all_btn.click()
             logging.info("✅ Cookies acceptés")
+            time.sleep(0.5)
         except Exception:
-            logging.info("Pas de bannière cookies")
+            pass
 
-        # Attendre que la page soit complètement chargée
-        time.sleep(3)
+        # Recherche des créneaux disponibles avec l'heure exacte
+        logging.info(f"🔍 Recherche des créneaux pour {hour_str} ({hour_system_minutes} minutes)...")
         
-        logging.info(f"🔍 Recherche des créneaux disponibles pour {hour_str} (system-time: {system_start_time})...")
+        # Stratégie 1: Chercher directement les liens de réservation avec data-test-id
+        booking_links = driver.find_elements(By.CSS_SELECTOR, f'a[data-test-id*="|{date}|{hour_system_minutes}"]')
+        logging.info(f"📊 Trouvé {len(booking_links)} liens directs avec data-test-id")
         
-        # Méthode 1: Recherche par data-system-start-time
-        try:
-            # Chercher tous les intervals avec le bon système de temps
-            time_intervals = driver.find_elements(
-                By.CSS_SELECTOR, 
-                f'div.resource-interval[data-system-start-time="{system_start_time}"]'
-            )
-            logging.info(f"📊 Trouvé {len(time_intervals)} intervals pour {hour_str}")
-            
-            for i, interval in enumerate(time_intervals):
-                try:
-                    # Chercher le lien de réservation dans cet interval
-                    booking_link = interval.find_element(By.CSS_SELECTOR, 'a.book-interval.not-booked')
+        for link in booking_links:
+            try:
+                if "not-booked" in link.get_attribute("class"):
+                    link_text = link.text
+                    logging.info(f"✅ Créneau disponible trouvé: {link_text}")
                     
-                    # Vérifier que c'est bien un créneau disponible
-                    cost_element = booking_link.find_element(By.CSS_SELECTOR, 'span.cost')
-                    slot_text = booking_link.find_element(By.CSS_SELECTOR, 'span.available-booking-slot').text
+                    # Scroller et cliquer
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", link)
+                    time.sleep(0.2)
                     
-                    logging.info(f"✅ Créneau {i+1} trouvé: {slot_text} - {cost_element.text}")
+                    try:
+                        link.click()
+                    except:
+                        driver.execute_script("arguments[0].click();", link)
                     
-                    # Scroller jusqu'au lien et cliquer
-                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", booking_link)
+                    logging.info("✅ Cliqué sur le créneau")
                     time.sleep(1)
+                    
+                    return complete_booking()
+                    
+            except Exception as e:
+                logging.warning(f"Erreur avec ce lien: {e}")
+                continue
+        
+        # Stratégie 2: Chercher via les divs resource-interval
+        intervals = driver.find_elements(By.CSS_SELECTOR, f'div[data-system-start-time="{hour_system_minutes}"]')
+        logging.info(f"📊 Trouvé {len(intervals)} intervals pour {hour_str}")
+        
+        for interval in intervals:
+            try:
+                # Chercher le lien de réservation dans cet interval
+                booking_link = interval.find_element(By.CSS_SELECTOR, 'a.book-interval.not-booked')
+                link_text = booking_link.text
+                
+                if "£" in link_text:  # Vérifier qu'il y a un prix
+                    logging.info(f"✅ Créneau disponible trouvé: {link_text}")
+                    
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", booking_link)
+                    time.sleep(0.2)
                     
                     try:
                         booking_link.click()
                     except:
-                        # Si le clic normal échoue, utiliser JavaScript
                         driver.execute_script("arguments[0].click();", booking_link)
                     
                     logging.info("✅ Cliqué sur le créneau")
-                    take_screenshot("after_slot_click")
+                    time.sleep(1)
                     
-                    # Attendre que la page suivante charge
-                    time.sleep(3)
+                    return complete_booking()
                     
-                    # Vérifier si on est sur la page de réservation
-                    if "booking" in driver.current_url.lower() or "book" in driver.page_source.lower():
-                        logging.info("✅ Page de réservation chargée")
-                        
-                        # Sélection de la durée
-                        try:
-                            logging.info("⏱️ Sélection de la durée...")
-                            
-                            # Chercher le select2 ou le select normal
-                            try:
-                                select2_selection = WebDriverWait(driver, 5).until(
-                                    EC.element_to_be_clickable((By.CSS_SELECTOR, ".select2-selection"))
-                                )
-                                select2_selection.click()
-                                time.sleep(1)
-                                
-                                # Sélectionner la deuxième option (1 heure)
-                                options = driver.find_elements(By.CSS_SELECTOR, ".select2-results__option")
-                                if len(options) >= 2:
-                                    options[1].click()
-                                    logging.info("✅ Durée sélectionnée via Select2")
-                                else:
-                                    logging.info("⚠️ Options Select2 insuffisantes, on continue...")
-                            except:
-                                # Fallback avec select standard
-                                try:
-                                    duration_select = driver.find_element(By.ID, "booking-duration")
-                                    Select(duration_select).select_by_index(1)
-                                    logging.info("✅ Durée sélectionnée via select standard")
-                                except:
-                                    logging.info("⚠️ Pas de sélection de durée trouvée, on continue...")
-                        except Exception as e:
-                            logging.warning(f"Sélection durée échouée: {e}")
-                        
-                        time.sleep(1)
-                        
-                        # Continuer
-                        try:
-                            continue_btn = WebDriverWait(driver, 10).until(
-                                EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Continue')]"))
-                            )
-                            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", continue_btn)
-                            time.sleep(1)
-                            continue_btn.click()
-                            logging.info("✅ Clicked Continue")
-                        except Exception as e:
-                            logging.error(f"Erreur au clic Continue: {e}")
-                            take_screenshot("continue_error")
-                            continue
-                        
-                        take_screenshot("after_continue")
-                        time.sleep(3)
-                        
-                        # Payer
-                        try:
-                            paynow_btn = WebDriverWait(driver, 10).until(
-                                EC.element_to_be_clickable((By.ID, "paynow"))
-                            )
-                            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", paynow_btn)
-                            time.sleep(1)
-                            paynow_btn.click()
-                            logging.info("✅ Clicked Confirm and pay")
-                        except Exception as e:
-                            logging.error(f"Erreur au clic Pay: {e}")
-                            take_screenshot("pay_error")
-                            continue
-                        
-                        # Paiement Stripe
-                        logging.info("💳 Paiement Stripe...")
-                        time.sleep(5)  # Attendre que Stripe charge
-                        take_screenshot("stripe_form")
-                        
-                        try:
-                            # Attendre les iframes Stripe
-                            iframes = WebDriverWait(driver, 15).until(
-                                EC.presence_of_all_elements_located((By.CSS_SELECTOR, "iframe[name^='__privateStripeFrame']"))
-                            )
-                            logging.info(f"✅ Trouvé {len(iframes)} iframes Stripe")
-                            
-                            # Numéro de carte
-                            driver.switch_to.frame(iframes[0])
-                            card_field = WebDriverWait(driver, 10).until(
-                                EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cardnumber']"))
-                            )
-                            card_field.send_keys(card_number)
-                            driver.switch_to.default_content()
-                            logging.info("✅ Numéro de carte saisi")
-                            
-                            # Date d'expiration
-                            driver.switch_to.frame(iframes[1])
-                            expiry_field = WebDriverWait(driver, 10).until(
-                                EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='exp-date']"))
-                            )
-                            expiry_field.send_keys(card_expiry)
-                            driver.switch_to.default_content()
-                            logging.info("✅ Date d'expiration saisie")
-                            
-                            # CVC
-                            driver.switch_to.frame(iframes[2])
-                            cvc_field = WebDriverWait(driver, 10).until(
-                                EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cvc']"))
-                            )
-                            cvc_field.send_keys(card_cvc)
-                            driver.switch_to.default_content()
-                            logging.info("✅ CVC saisi")
-                            
-                            # Soumettre le paiement
-                            pay_button = WebDriverWait(driver, 10).until(
-                                EC.element_to_be_clickable((By.ID, "cs-stripe-elements-submit-button"))
-                            )
-                            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", pay_button)
-                            time.sleep(1)
-                            pay_button.click()
-                            logging.info("✅ Paiement soumis!")
-                            
-                            # Attendre la confirmation
-                            WebDriverWait(driver, 30).until(EC.url_contains("confirmation"))
-                            take_screenshot("confirmation")
-                            logging.info("🎉 RÉSERVATION CONFIRMÉE!")
-                            return True
-                            
-                        except Exception as e:
-                            logging.error(f"Erreur paiement Stripe: {e}")
-                            take_screenshot("stripe_error")
-                            continue
-                    else:
-                        logging.warning("⚠️ Pas arrivé sur la page de réservation")
-                        continue
-                        
-                except Exception as e:
-                    logging.warning(f"Erreur avec l'interval {i+1}: {e}")
-                    continue
-                    
-        except Exception as e:
-            logging.error(f"Erreur dans la recherche des intervals: {e}")
+            except Exception as e:
+                logging.warning(f"Pas de lien disponible dans cet interval: {e}")
+                continue
         
-        # Méthode 2: Fallback - recherche par texte
-        logging.info("🔍 Méthode alternative: recherche par texte...")
-        try:
-            # Rechercher tous les liens de réservation disponibles
-            all_booking_links = driver.find_elements(By.CSS_SELECTOR, 'a.book-interval.not-booked')
-            logging.info(f"📊 Trouvé {len(all_booking_links)} créneaux disponibles au total")
-            
-            for i, link in enumerate(all_booking_links):
-                try:
-                    slot_text = link.find_element(By.CSS_SELECTOR, 'span.available-booking-slot').text
-                    cost_text = link.find_element(By.CSS_SELECTOR, 'span.cost').text
+        # Stratégie 3: Chercher tous les créneaux disponibles et filtrer
+        all_available = driver.find_elements(By.CSS_SELECTOR, 'a.book-interval.not-booked')
+        logging.info(f"📊 Trouvé {len(all_available)} créneaux disponibles au total")
+        
+        for link in all_available:
+            try:
+                link_text = link.text
+                test_id = link.get_attribute('data-test-id') or ""
+                
+                # Vérifier si c'est pour notre heure
+                if f"|{hour_system_minutes}" in test_id or f"{hour_str}" in link_text:
+                    logging.info(f"✅ Créneau trouvé: {link_text}")
                     
-                    # Vérifier si c'est l'heure souhaitée
-                    if hour_str in slot_text:
-                        logging.info(f"✅ Créneau alternatif trouvé: {slot_text} - {cost_text}")
-                        
-                        # Scroller et cliquer
-                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", link)
-                        time.sleep(1)
-                        
-                        try:
-                            link.click()
-                        except:
-                            driver.execute_script("arguments[0].click();", link)
-                        
-                        logging.info("✅ Cliqué sur le créneau alternatif")
-                        # Continuer avec le processus de réservation...
-                        return True  # Vous pouvez ajouter le reste du processus ici
-                        
-                except Exception as e:
-                    logging.warning(f"Erreur avec le lien {i+1}: {e}")
-                    continue
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", link)
+                    time.sleep(0.2)
                     
-        except Exception as e:
-            logging.error(f"Erreur dans la méthode alternative: {e}")
+                    try:
+                        link.click()
+                    except:
+                        driver.execute_script("arguments[0].click();", link)
+                    
+                    logging.info("✅ Cliqué sur le créneau")
+                    time.sleep(1)
+                    
+                    return complete_booking()
+                    
+            except Exception as e:
+                continue
+        
+        logging.warning("❌ Aucun créneau disponible trouvé")
+        return False
 
     except Exception as e:
-        logging.error(f"❌ Erreur générale dans try_booking: {e}")
+        logging.error(f"❌ Erreur dans try_booking: {e}")
         take_screenshot("booking_error")
-    
-    return False
+        return False
+
+
+def complete_booking():
+    """Complete the booking process after clicking on a slot"""
+    try:
+        take_screenshot("after_slot_click")
+        
+        # Sélection de la durée si nécessaire
+        try:
+            # Chercher select2 ou select normal
+            try:
+                select2_selection = WebDriverWait(driver, 2).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, ".select2-selection"))
+                )
+                select2_selection.click()
+                time.sleep(0.5)
+                
+                options = driver.find_elements(By.CSS_SELECTOR, ".select2-results__option")
+                if len(options) >= 2:
+                    options[1].click()
+                logging.info("✅ Durée sélectionnée via Select2")
+            except:
+                try:
+                    duration_select = driver.find_element(By.ID, "booking-duration")
+                    Select(duration_select).select_by_index(1)
+                    logging.info("✅ Durée sélectionnée")
+                except:
+                    logging.info("⚠️ Pas de sélection de durée nécessaire")
+        except:
+            pass
+        
+        # Continue
+        try:
+            continue_btn = WebDriverWait(driver, 3).until(
+                EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Continue')]"))
+            )
+            continue_btn.click()
+            logging.info("✅ Continue cliqué")
+            time.sleep(1)
+        except Exception as e:
+            logging.error(f"Erreur Continue: {e}")
+            return False
+        
+        # Pay now
+        try:
+            paynow_btn = WebDriverWait(driver, 3).until(
+                EC.element_to_be_clickable((By.ID, "paynow"))
+            )
+            paynow_btn.click()
+            logging.info("✅ Pay now cliqué")
+            time.sleep(2)
+        except Exception as e:
+            logging.error(f"Erreur Pay now: {e}")
+            return False
+        
+        # Paiement Stripe
+        try:
+            logging.info("💳 Traitement du paiement...")
+            
+            iframes = WebDriverWait(driver, 5).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, "iframe[name^='__privateStripeFrame']"))
+            )
+            
+            # Numéro de carte
+            driver.switch_to.frame(iframes[0])
+            card_field = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cardnumber']"))
+            )
+            card_field.send_keys(card_number)
+            driver.switch_to.default_content()
+            
+            # Date d'expiration
+            driver.switch_to.frame(iframes[1])
+            expiry_field = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='exp-date']"))
+            )
+            expiry_field.send_keys(card_expiry)
+            driver.switch_to.default_content()
+            
+            # CVC
+            driver.switch_to.frame(iframes[2])
+            cvc_field = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cvc']"))
+            )
+            cvc_field.send_keys(card_cvc)
+            driver.switch_to.default_content()
+            
+            # Soumettre
+            pay_button = WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.ID, "cs-stripe-elements-submit-button"))
+            )
+            pay_button.click()
+            
+            # Attendre confirmation
+            WebDriverWait(driver, 15).until(EC.url_contains("confirmation"))
+            take_screenshot("confirmation")
+            logging.info("🎉 RÉSERVATION CONFIRMÉE!")
+            return True
+            
+        except Exception as e:
+            logging.error(f"Erreur paiement: {e}")
+            take_screenshot("payment_error")
+            return False
+            
+    except Exception as e:
+        logging.error(f"Erreur complete_booking: {e}")
+        take_screenshot("complete_booking_error")
+        return False
 
 
 # Programme principal
 try:
-    # Navigation vers la page
+    start_time = time.time()
+    max_duration = 300  # 5 minutes maximum
+    
     url = f"https://clubspark.lta.org.uk/SouthwarkPark/Booking/BookByDate#?date={date}&role=guest"
     logging.info(f"🌐 Navigation vers: {url}")
     driver.get(url)
-    time.sleep(5)
+    time.sleep(2)
     take_screenshot("initial_page")
 
     # Login
     if not login_first(username, password):
-        logging.error("❌ Impossible de se connecter")
-        # Continuer quand même au cas où
+        logging.warning("⚠️ Login échoué, on continue quand même")
     
-    # Essayer de naviguer directement si pas sur la bonne page
+    # Naviguer vers la page de réservation
     if "BookByDate" not in driver.current_url:
         driver.get(url)
-        time.sleep(5)
+        time.sleep(2)
 
-    # Essayer de réserver (max 20 tentatives)
-    max_attempts = 20
-    attempts = 0
-
-    while attempts < max_attempts:
-        logging.info(f"🔄 Tentative {attempts + 1}/{max_attempts}")
+    # Boucle de tentatives (max 5 minutes)
+    attempt = 0
+    while time.time() - start_time < max_duration:
+        attempt += 1
+        elapsed = int(time.time() - start_time)
+        logging.info(f"🔄 Tentative {attempt} (temps écoulé: {elapsed}s)")
 
         if try_booking():
-            logging.info("✅ RÉSERVATION RÉUSSIE!")
+            logging.info("🎉 RÉSERVATION RÉUSSIE!")
             break
         else:
-            attempts += 1
-            if attempts < max_attempts:
-                logging.info(f"⏳ Pas de créneaux disponibles. Actualisation dans 5 secondes...")
-                time.sleep(5)
+            if time.time() - start_time < max_duration - 10:  # Au moins 10s restantes
+                logging.info("⏳ Actualisation dans 1 seconde...")
+                time.sleep(1)
                 driver.refresh()
-                time.sleep(3)
+                time.sleep(1)
+            else:
+                logging.info("⏰ Temps limite atteint")
+                break
 
-    if attempts >= max_attempts:
-        logging.warning(f"⚠️ Aucun créneau trouvé après {max_attempts} tentatives")
+    total_time = int(time.time() - start_time)
+    if total_time >= max_duration:
+        logging.warning(f"⏰ Temps limite de 5 minutes atteint après {attempt} tentatives")
+    else:
+        logging.info(f"✅ Script terminé en {total_time}s après {attempt} tentatives")
 
 except Exception as e:
     logging.error(f"❌ Erreur critique: {e}")
     take_screenshot("critical_error")
 finally:
     driver.quit()
-    logging.info("🏁 Script terminé")
+    logging.info("🏁 Driver fermé")
