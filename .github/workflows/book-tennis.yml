@@ -6,58 +6,77 @@ on:
       date:
         description: 'Date de réservation (YYYY-MM-DD)'
         required: true
-        default: '2025-06-16'
-        type: string
+        default: ''
       hour:
-        description: 'Heure (7, 7.5, 8, 8.5, etc.)'
+        description: 'Heure de réservation (7-21)'
         required: true
         default: '7'
-        type: string
+        type: choice
+        options: ['7','8','9','10','11','12','13','14','15','16','17','18','19','20','21']
+      minutes:
+        description: 'Minutes de réservation (0 ou 30)'
+        required: true
+        default: '0'
+        type: choice
+        options: ['0', '30']
       account:
-        description: 'Compte à utiliser (1 ou 2)'
+        description: 'Compte à utiliser'
         required: true
         default: '1'
         type: choice
-        options:
-          - '1'
-          - '2'
+        options: ['1', '2']
 
 jobs:
-  book:
+  book-court:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-    
-    - name: Install dependencies
-      run: |
-        pip install -r requirements.txt
-    
-    - name: Run booking script
-      env:
-        TENNIS_USERNAME: ${{ secrets.TENNIS_USERNAME }}
-        TENNIS_PASSWORD: ${{ secrets.TENNIS_PASSWORD }}
-        TENNIS_USERNAME2: ${{ secrets.TENNIS_USERNAME2 }}
-        TENNIS_PASSWORD2: ${{ secrets.TENNIS_PASSWORD2 }}
-        CARD_NUMBER: ${{ secrets.CARD_NUMBER }}
-        CARD_EXPIRY: ${{ secrets.CARD_EXPIRY }}
-        CARD_CVC: ${{ secrets.CARD_CVC }}
-        BOOKING_DATE: ${{ inputs.date }}
-        BOOKING_HOUR: ${{ inputs.hour }}
-        ACCOUNT: ${{ inputs.account }}
-      run: python main.py
-    
-    - name: Upload logs and screenshots
-      uses: actions/upload-artifact@v3
-      if: always()
-      with:
-        name: booking-logs-${{ inputs.date }}-${{ inputs.hour }}h-account${{ inputs.account }}
-        path: |
-          *.log
-          *.png
-        retention-days: 7
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set default date to today + 7 if empty
+        id: set-date
+        run: |
+          if [ -z "${{ github.event.inputs.date }}" ]; then
+            DATE=$(date -d "+7 days" "+%Y-%m-%d")
+          else
+            DATE="${{ github.event.inputs.date }}"
+          fi
+          echo "BOOKING_DATE=$DATE" >> "$GITHUB_ENV"
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run booking script
+        env:
+          TENNIS_USERNAME: ${{ secrets.TENNIS_USERNAME }}
+          TENNIS_USERNAME2: ${{ secrets.TENNIS_USERNAME2 }}
+          TENNIS_PASSWORD: ${{ secrets.TENNIS_PASSWORD }}
+          CARD_NUMBER: ${{ secrets.CARD_NUMBER }}
+          CARD_EXPIRY: ${{ secrets.CARD_EXPIRY }}
+          CARD_CVC: ${{ secrets.CARD_CVC }}
+          BOOKING_DATE: ${{ env.BOOKING_DATE }}
+          BOOKING_HOUR: ${{ github.event.inputs.hour }}
+          BOOKING_MINUTES: ${{ github.event.inputs.minutes }}
+          ACCOUNT: ${{ github.event.inputs.account }}
+        run: |
+          python main.py
+
+      - name: Upload booking log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: booking-log
+          path: booking.log
+          if-no-files-found: ignore
