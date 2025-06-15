@@ -132,7 +132,7 @@ def login_first(username, password):
 
 def find_and_book_slot():
     try:
-        # Accept cookies if present
+        # Accept cookies
         try:
             cookie_btn = WebDriverWait(driver, 3).until(
                 EC.element_to_be_clickable((By.CLASS_NAME, "osano-cm-accept-all"))
@@ -144,42 +144,171 @@ def find_and_book_slot():
             pass
 
         # Wait for page to load completely
-        time.sleep(3)
-        
-        logging.info(f"🔍 Recherche créneaux à {hour_str} (système: {hour_system_minutes} minutes)...")
-        
-        # Use the proven method: Look for divs with the exact system start time
-        time_slot_divs = driver.find_elements(By.CSS_SELECTOR, f'div[data-system-start-time="{hour_system_minutes}"]')
-        logging.info(f"📊 {len(time_slot_divs)} créneaux trouvés pour {hour_str}")
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "div.resource"))
+        )
+        time.sleep(3)  # Additional wait for dynamic content
 
-        for i, div in enumerate(time_slot_divs):
+        logging.info(f"🔍 Recherche créneaux disponibles à {hour_str}...")
+        
+        # Method 1: Look for available slots using the highlighted class structure
+        # Based on your screenshot, look for elements with class "not-booked"
+        available_slots = driver.find_elements(By.CSS_SELECTOR, 'a.not-booked')
+        logging.info(f"📊 {len(available_slots)} créneaux 'not-booked' trouvés")
+        
+        # Also try the original selector as backup
+        if not available_slots:
+            available_slots = driver.find_elements(By.CSS_SELECTOR, 'a.book-interval.not-booked')
+            logging.info(f"📊 {len(available_slots)} créneaux 'book-interval not-booked' trouvés")
+        
+        # Also try just looking for book-interval elements and check if they're available
+        if not available_slots:
+            all_intervals = driver.find_elements(By.CSS_SELECTOR, 'a.book-interval')
+            available_slots = [slot for slot in all_intervals if 'not-booked' in slot.get_attribute('class')]
+            logging.info(f"📊 {len(available_slots)} créneaux via filtrage manuel trouvés")
+
+        # Check each slot
+        for i, slot in enumerate(available_slots):
             try:
-                # Look for available booking link within this time slot
-                booking_link = div.find_element(By.CSS_SELECTOR, 'a.book-interval.not-booked')
-                cost_span = booking_link.find_element(By.CLASS_NAME, "cost")
+                slot_text = slot.text.strip()
+                data_test_id = slot.get_attribute('data-test-id') or ""
+                class_attr = slot.get_attribute('class') or ""
+                href_attr = slot.get_attribute('href') or ""
                 
-                logging.info(f"🔍 Court {i+1}: {booking_link.text.strip()}")
+                logging.info(f"🔍 Slot {i+1}: '{slot_text}' | class: '{class_attr}' | data-test-id: '{data_test_id}'")
                 
-                # Check if it's the right price (£3.60 is standard, £4.95 might be peak)
-                if "£3.60" in cost_span.text or "£4.95" in cost_span.text or "£5.00" in cost_span.text:
-                    logging.info(f"✅ CRÉNEAU {hour_str} TROUVÉ: {booking_link.text}")
+                # Check if this slot matches our desired time
+                time_match = (
+                    hour_str in slot_text or
+                    f"|{hour_system_minutes}|" in data_test_id or
+                    f"|{hour_system_minutes}" in data_test_id or
+                    f"={hour_system_minutes}" in href_attr
+                )
+                
+                # Check for price to confirm it's bookable
+                has_price = any(price in slot_text for price in ["£3.60", "£4.95", "£3.50", "£5.00", "£6.00", "£"])
+                
+                # Check if it's truly available (not booked)
+                is_available = (
+                    'not-booked' in class_attr and 
+                    'booked' not in class_attr.replace('not-booked', '')
+                )
+                
+                logging.info(f"   Time match: {time_match}, Has price: {has_price}, Available: {is_available}")
+                
+                if time_match and has_price and is_available:
+                    logging.info(f"✅ CRÉNEAU TROUVÉ: {slot_text}")
                     
-                    # Scroll to element and click
-                    driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", booking_link)
+                    # Scroll to element
+                    driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", slot)
                     time.sleep(1)
-                    booking_link.click()
+                    
+                    # Click the slot
+                    try:
+                        slot.click()
+                    except:
+                        driver.execute_script("arguments[0].click();", slot)
+                    
                     logging.info("✅ Créneau cliqué")
                     time.sleep(2)
                     
                     return complete_booking_process()
                     
             except Exception as e:
-                logging.debug(f"Court {i+1} non disponible: {e}")
+                logging.warning(f"Erreur vérification slot {i+1}: {e}")
                 continue
 
+        # Method 2: Look for specific time intervals using data attributes
+        logging.info("🔍 Méthode alternative: recherche par intervalle de temps...")
+        
+        # Try different selectors for time intervals
+        time_selectors = [
+            f'div[data-system-start-time="{hour_system_minutes}"]',
+            f'*[data-start-time="{hour_system_minutes}"]',
+            f'*[data-system-start-time="{hour_system_minutes}"]'
+        ]
+        
+        for selector in time_selectors:
+            time_intervals = driver.find_elements(By.CSS_SELECTOR, selector)
+            logging.info(f"Found {len(time_intervals)} intervals with selector: {selector}")
+            
+            for interval in time_intervals:
+                try:
+                    # Look for booking link within this time interval
+                    parent = interval.find_element(By.XPATH, "./..")
+                    
+                    # Try different ways to find the booking link
+                    booking_selectors = [
+                        'a.not-booked',
+                        'a.book-interval.not-booked',
+                        'a.book-interval'
+                    ]
+                    
+                    booking_link = None
+                    for book_selector in booking_selectors:
+                        try:
+                            booking_link = parent.find_element(By.CSS_SELECTOR, book_selector)
+                            if 'not-booked' in booking_link.get_attribute('class'):
+                                break
+                        except:
+                            continue
+                    
+                    if booking_link and "£" in booking_link.text:
+                        logging.info(f"✅ Créneau trouvé via intervalle: {booking_link.text}")
+                        driver.execute_script("arguments[0].click();", booking_link)
+                        time.sleep(2)
+                        return complete_booking_process()
+                        
+                except Exception as e:
+                    logging.debug(f"Erreur interval check: {e}")
+                    continue
+
+        # Method 3: Advanced search using XPath
+        logging.info("🔍 Méthode XPath avancée...")
+        xpath_queries = [
+            f"//a[contains(@class, 'not-booked') and contains(text(), '{hour_str}')]",
+            f"//a[contains(@class, 'not-booked') and contains(@data-test-id, '|{hour_system_minutes}|')]",
+            f"//a[contains(@class, 'not-booked') and contains(., '£')]//ancestor-or-self::*[contains(text(), '{hour_str}')]"
+        ]
+        
+        for xpath in xpath_queries:
+            try:
+                elements = driver.find_elements(By.XPATH, xpath)
+                logging.info(f"XPath '{xpath}' found {len(elements)} elements")
+                
+                for element in elements:
+                    if "£" in element.text:
+                        logging.info(f"✅ Créneau trouvé via XPath: {element.text}")
+                        driver.execute_script("arguments[0].click();", element)
+                        time.sleep(2)
+                        return complete_booking_process()
+            except Exception as e:
+                logging.debug(f"XPath error: {e}")
+
+        # Debug: Print all available slots for analysis
+        logging.info("🔍 Debug: Analyse de tous les créneaux...")
+        all_links = driver.find_elements(By.CSS_SELECTOR, 'a')
+        available_count = 0
+        
+        for link in all_links:
+            class_attr = link.get_attribute('class') or ""
+            if 'book' in class_attr.lower() or 'not-booked' in class_attr:
+                text = link.text.strip()
+                if text and len(text) < 100:  # Avoid very long texts
+                    logging.info(f"   Link: '{text}' | class: '{class_attr}'")
+                    available_count += 1
+                    
+                    if available_count > 20:  # Limit debug output
+                        break
+
         logging.warning("❌ Aucun créneau disponible trouvé")
+        take_screenshot("no_slots_found")
         return False
 
+    except Exception as e:
+        logging.error(f"❌ Erreur find_and_book_slot: {e}")
+        take_screenshot("find_slot_error")
+        return False
     except Exception as e:
         logging.error(f"❌ Erreur find_and_book_slot: {e}")
         take_screenshot("find_slot_error")
