@@ -145,16 +145,16 @@ def wait_for_page_load():
     """Wait for the booking page to fully load"""
     try:
         # Wait for the main booking grid to be present
-        WebDriverWait(driver, 3).until(
+        WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "div.resource, .booking-grid, .session-container"))
         )
         
         # Wait a bit more for dynamic content to load
-        time.sleep(2)
+        time.sleep(3)
         
         # Wait for at least some booking slots to be present
-        WebDriverWait(driver, 2).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "a[class*='book'], .book-interval, a.not-booked"))
+        WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "a.book-interval"))
         )
         
         logging.info("✅ Page de réservation chargée")
@@ -183,154 +183,128 @@ def find_and_book_slot():
 
         logging.info(f"🔍 Recherche créneaux disponibles à {hour_str}...")
         
-        # Debug: Log all available booking links
-        try:
-            all_links = driver.find_elements(By.CSS_SELECTOR, "a[class*='book'], a.not-booked")
-            logging.info(f"📊 Total liens de réservation trouvés: {len(all_links)}")
-            
-            for i, link in enumerate(all_links[:10]):  # Log first 10 for debugging
-                try:
-                    link_class = link.get_attribute('class') or ""
-                    link_text = link.text.strip()
-                    link_href = link.get_attribute('href') or ""
-                    logging.info(f"   Link {i+1}: class='{link_class}' text='{link_text}' href='{link_href[:100]}...'")
-                except:
-                    continue
-        except Exception as e:
-            logging.warning(f"Debug logging failed: {e}")
-
-        # Method 1: Look for available slots using multiple selectors
-        selectors_to_try = [
-            'a.not-booked',  # Primary selector from screenshot
-            'a.book-interval.not-booked',  # Original selector
-            'a[class*="not-booked"]',  # Any element with not-booked in class
-            'a[href*="booking"]',  # Any booking link
-        ]
+        # FIXED: Use the correct selector for available slots
+        # Based on your HTML, available slots have class "book-interval not-booked"
+        available_slots = driver.find_elements(By.CSS_SELECTOR, "a.book-interval.not-booked")
         
-        available_slots = []
-        for selector in selectors_to_try:
-            try:
-                slots = driver.find_elements(By.CSS_SELECTOR, selector)
-                # Filter out booked slots
-                filtered_slots = []
-                for slot in slots:
-                    class_attr = slot.get_attribute('class') or ""
-                    # Make sure it's not booked (avoid "not-booked" being part of a larger class like "booked-not-booked")
-                    if 'not-booked' in class_attr and not ('booked' in class_attr.replace('not-booked', '')):
-                        filtered_slots.append(slot)
-                
-                if filtered_slots:
-                    available_slots = filtered_slots
-                    logging.info(f"📊 {len(available_slots)} créneaux trouvés avec selector: {selector}")
-                    break
-            except Exception as e:
-                logging.warning(f"Selector {selector} failed: {e}")
-                continue
-
+        logging.info(f"📊 Total créneaux disponibles trouvés: {len(available_slots)}")
+        
         if not available_slots:
             logging.warning("⚠️ Aucun créneau disponible trouvé")
             return False
 
-        # Check each slot for our desired time
+        # Debug: Log details of available slots
+        for i, slot in enumerate(available_slots[:5]):  # Log first 5 for debugging
+            try:
+                data_test_id = slot.get_attribute('data-test-id') or ""
+                href = slot.get_attribute('href') or ""
+                inner_html = slot.get_attribute('innerHTML') or ""
+                logging.info(f"   Slot {i+1}: data-test-id='{data_test_id}'")
+                logging.info(f"   Slot {i+1}: href='{href}'")
+                logging.info(f"   Slot {i+1}: innerHTML='{inner_html[:100]}...'")
+            except:
+                continue
+
+        # FIXED: Better time matching logic
+        # From your HTML, the time info is in the data-test-id attribute
+        # Format: "booking-xxxxx|2025-06-23|600" where 600 = 10:00 (600 minutes from midnight)
+        target_minutes = hour * 60 + minutes
+        logging.info(f"🎯 Recherche créneaux pour {target_minutes} minutes ({hour_str})")
+        
         for i, slot in enumerate(available_slots):
             try:
-                slot_text = slot.text.strip()
                 data_test_id = slot.get_attribute('data-test-id') or ""
-                class_attr = slot.get_attribute('class') or ""
-                href_attr = slot.get_attribute('href') or ""
                 
-                logging.info(f"🔍 Analyzing slot {i+1}: '{slot_text}'")
-                logging.info(f"   Class: '{class_attr}'")
-                logging.info(f"   Data-test-id: '{data_test_id}'")
-                
-                # Enhanced time matching logic
-                time_matches = [
-                    hour_str in slot_text,  # Direct time match (e.g., "07:00")
-                    f"{hour:02d}:{minutes:02d}" in slot_text,  # Exact time format
-                    str(hour_system_minutes) in data_test_id,  # Minutes in data attribute
-                    str(hour_system_minutes) in href_attr,  # Minutes in href
-                ]
-                
-                # Also check for common time formats
-                time_variants = [
-                    f"{hour}:{minutes:02d}",  # 7:00
-                    f"{hour:02d}.{minutes:02d}",  # 07.00
-                    f"{hour:02d}{minutes:02d}",  # 0700
-                ]
-                
-                for variant in time_variants:
-                    time_matches.append(variant in slot_text)
-                
-                time_match = any(time_matches)
-                
-                # Check for price indicators (available slots usually show prices)
-                price_indicators = ["£", "€", "$", "GBP", "price"]
-                has_price = any(indicator in slot_text.lower() for indicator in price_indicators)
-                
-                # Verify it's truly available
-                is_available = (
-                    'not-booked' in class_attr and 
-                    'booked' not in class_attr.replace('not-booked', '') and
-                    not any(unavailable in class_attr.lower() for unavailable in ['disabled', 'unavailable', 'closed'])
-                )
-                
-                logging.info(f"   Time match: {time_match}")
-                logging.info(f"   Has price: {has_price}")
-                logging.info(f"   Is available: {is_available}")
-                
-                if time_match and is_available:
-                    logging.info(f"✅ CRÉNEAU TROUVÉ: {slot_text}")
-                    
-                    # Scroll to element and click
-                    try:
-                        driver.execute_script("arguments[0].scrollIntoView({behavior: 'auto', block: 'center'});", slot)
-                        time.sleep(0.5)
+                # Extract time from data-test-id
+                # Format: booking-xxxxx|date|minutes
+                if '|' in data_test_id:
+                    parts = data_test_id.split('|')
+                    if len(parts) >= 3:
+                        slot_minutes = parts[-1]  # Last part should be minutes
                         
-                        # Try clicking with multiple methods
+                        # Convert to integer and compare
                         try:
-                            slot.click()
-                        except ElementClickInterceptedException:
-                            # Try JavaScript click if regular click is intercepted
-                            driver.execute_script("arguments[0].click();", slot)
-                        
-                        logging.info("✅ Créneau cliqué")
-                        time.sleep(1)
-                        
-                        return complete_booking_process()
-                        
-                    except Exception as click_error:
-                        logging.error(f"Erreur lors du clic: {click_error}")
-                        continue
+                            slot_minutes_int = int(slot_minutes)
+                            slot_hour = slot_minutes_int // 60
+                            slot_min = slot_minutes_int % 60
+                            slot_time_str = f"{slot_hour:02d}:{slot_min:02d}"
+                            
+                            logging.info(f"🕐 Slot {i+1}: {slot_time_str} ({slot_minutes_int} minutes)")
+                            
+                            # Check if this matches our target time
+                            if slot_minutes_int == target_minutes:
+                                logging.info(f"✅ CRÉNEAU TROUVÉ: {slot_time_str}")
+                                
+                                # Scroll to element and click
+                                try:
+                                    driver.execute_script("arguments[0].scrollIntoView({behavior: 'auto', block: 'center'});", slot)
+                                    time.sleep(1)
+                                    
+                                    # Try clicking with multiple methods
+                                    try:
+                                        slot.click()
+                                        logging.info("✅ Créneau cliqué (direct)")
+                                    except ElementClickInterceptedException:
+                                        # Try JavaScript click if regular click is intercepted
+                                        driver.execute_script("arguments[0].click();", slot)
+                                        logging.info("✅ Créneau cliqué (JavaScript)")
+                                    
+                                    time.sleep(2)
+                                    return complete_booking_process()
+                                    
+                                except Exception as click_error:
+                                    logging.error(f"Erreur lors du clic: {click_error}")
+                                    continue
+                        except ValueError:
+                            logging.warning(f"Impossible de convertir '{slot_minutes}' en minutes")
+                            continue
                     
             except Exception as e:
                 logging.warning(f"Erreur vérification slot {i+1}: {e}")
                 continue
 
-        # Method 2: Time-based search using parent containers
-        logging.info("🔍 Méthode alternative: recherche par containers de temps...")
+        # FALLBACK: If exact time match fails, try text-based matching
+        logging.info("🔍 Fallback: recherche par texte...")
         
-        try:
-            # Look for time containers that match our hour
-            time_containers = driver.find_elements(By.XPATH, f"//div[contains(text(), '{hour_str}') or contains(text(), '{hour}:')]")
-            
-            for container in time_containers:
-                try:
-                    # Look for booking links in the same row/section
-                    parent = container.find_element(By.XPATH, "./ancestor::div[contains(@class, 'resource') or contains(@class, 'session')]")
-                    booking_links = parent.find_elements(By.CSS_SELECTOR, "a.not-booked, a[class*='not-booked']")
+        for i, slot in enumerate(available_slots):
+            try:
+                # Get all text content from the slot
+                slot_text = slot.text.strip()
+                inner_html = slot.get_attribute('innerHTML') or ""
+                
+                # Check for time patterns in text and HTML
+                time_patterns = [
+                    hour_str,  # 07:00
+                    f"{hour}:{minutes:02d}",  # 7:00
+                    f"{hour:02d}.{minutes:02d}",  # 07.00
+                    f"{hour:02d}{minutes:02d}",  # 0700
+                ]
+                
+                time_found = False
+                for pattern in time_patterns:
+                    if pattern in slot_text or pattern in inner_html:
+                        time_found = True
+                        break
+                
+                if time_found:
+                    logging.info(f"✅ CRÉNEAU TROUVÉ (fallback): {slot_text}")
                     
-                    for link in booking_links:
-                        if 'not-booked' in link.get_attribute('class'):
-                            logging.info(f"✅ Créneau trouvé via container: {link.text}")
-                            driver.execute_script("arguments[0].click();", link)
-                            time.sleep(1)
-                            return complete_booking_process()
-                            
-                except Exception as e:
-                    continue
-        except Exception as e:
-            logging.warning(f"Méthode alternative échouée: {e}")
+                    try:
+                        driver.execute_script("arguments[0].scrollIntoView({behavior: 'auto', block: 'center'});", slot)
+                        time.sleep(1)
+                        driver.execute_script("arguments[0].click();", slot)
+                        logging.info("✅ Créneau cliqué (fallback)")
+                        time.sleep(2)
+                        return complete_booking_process()
+                    except Exception as click_error:
+                        logging.error(f"Erreur clic fallback: {click_error}")
+                        continue
+                    
+            except Exception as e:
+                logging.warning(f"Erreur fallback slot {i+1}: {e}")
+                continue
 
+        logging.warning(f"⚠️ Aucun créneau trouvé pour {hour_str}")
         return False
 
     except Exception as e:
@@ -530,7 +504,7 @@ try:
                 logging.info(f"⏳ Actualisation dans {refresh_delay}s...")
                 time.sleep(refresh_delay)
                 driver.refresh()
-                time.sleep(2)  # Give time for page to reload
+                time.sleep(3)  # Give more time for page to reload
             else:
                 break
 
