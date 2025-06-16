@@ -146,20 +146,15 @@ def login_first(username, password):
         return False
 
 def wait_for_page_load():
-    """Wait for the booking page to fully load"""
+    """Wait for the booking page to fully load - OPTIMIZED FOR SPEED"""
     try:
-        # Wait for the main booking grid to be present
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "div.resource-session, div.resource, .booking-grid, .session-container, .sessions-container"))
-        )
-        
-        # Wait a bit more for dynamic content to load
-        time.sleep(3)
-        
-        # Wait for booking elements - more flexible selectors
+        # Just wait for the booking links to appear - no need for other checks
         WebDriverWait(driver, 5).until(
-            lambda d: len(d.find_elements(By.CSS_SELECTOR, "a.book-interval, div.session-break, .available-booking-slot, a[href*='booking'], .not-booked")) > 0
+            EC.presence_of_element_located((By.CSS_SELECTOR, "a.book-interval"))
         )
+        
+        # Minimal wait for dynamic content
+        time.sleep(0.5)
         
         logging.info("✅ Page de réservation chargée")
         return True
@@ -169,216 +164,120 @@ def wait_for_page_load():
 
 def find_and_book_slot():
     try:
-        # Accept cookies first
+        # Accept cookies first - but don't wait if not there
         try:
-            cookie_btn = WebDriverWait(driver, 3).until(
-                EC.element_to_be_clickable((By.CLASS_NAME, "osano-cm-accept-all"))
-            )
+            cookie_btn = driver.find_element(By.CLASS_NAME, "osano-cm-accept-all")
             cookie_btn.click()
-            logging.info("✅ Cookies acceptés")
-            time.sleep(0.5)
+            time.sleep(0.2)
         except:
             pass
 
-        # Wait for page to load completely
+        # Wait for page to load
         if not wait_for_page_load():
-            logging.error("❌ Page non chargée correctement")
             return False
 
-        logging.info(f"🔍 Recherche créneaux disponibles à {hour_str}...")
+        logging.info(f"🔍 Recherche créneaux à {hour_str}...")
         
-        # DIRECT METHOD: Look for the exact elements shown in the HTML
-        # Target elements with class "book-interval not-booked" that have the time we want
+        # ULTRA FAST METHOD: Direct XPath to find slot with our exact time
         target_time_minutes = hour * 60 + minutes
         
-        # Find all booking links with the specific class
-        booking_links = driver.find_elements(By.CSS_SELECTOR, "a.book-interval.not-booked")
-        logging.info(f"📊 Found {len(booking_links)} 'book-interval not-booked' links")
+        # Use XPath to directly find the link with our target time in data-test-id
+        xpath_query = f"//a[@class='book-interval not-booked' and contains(@data-test-id, '|{target_time_minutes}')]"
         
-        for i, link in enumerate(booking_links):
-            try:
-                # Get the data-test-id attribute which contains the time
+        try:
+            # Find the slot directly
+            target_slot = WebDriverWait(driver, 2).until(
+                EC.element_to_be_clickable((By.XPATH, xpath_query))
+            )
+            
+            logging.info(f"🎯 SLOT TROUVÉ DIRECTEMENT à {hour_str}!")
+            
+            # Click immediately - no screenshot, no scroll
+            target_slot.click()
+            logging.info("✅ Cliqué!")
+            
+            time.sleep(1.5)  # Minimal wait
+            return complete_booking_process()
+            
+        except TimeoutException:
+            # Fallback to searching all slots if direct method fails
+            logging.info("⚠️ Recherche directe échouée, méthode classique...")
+            
+            booking_links = driver.find_elements(By.CSS_SELECTOR, "a.book-interval.not-booked")
+            
+            for link in booking_links:
                 data_test_id = link.get_attribute('data-test-id') or ""
-                href = link.get_attribute('href') or ""
-                link_text = link.text.strip()
                 
-                logging.info(f"🔍 Link {i+1}: text='{link_text}', data-test-id='{data_test_id}'")
-                
-                # Parse the data-test-id to get the time
-                # Format: booking-xxxxx|date|minutes
                 if '|' in data_test_id:
                     parts = data_test_id.split('|')
                     if len(parts) >= 3:
                         try:
-                            slot_minutes = int(parts[2])
-                            slot_hour = slot_minutes // 60
-                            slot_min = slot_minutes % 60
-                            
-                            logging.info(f"   Time: {slot_hour:02d}:{slot_min:02d} ({slot_minutes} minutes)")
-                            
-                            # Check if this is our target time
-                            if slot_minutes == target_time_minutes:
-                                logging.info(f"🎯 FOUND TARGET SLOT at {hour_str}!")
-                                
-                                # Scroll to element and click
-                                driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", link)
-                                time.sleep(1)
-                                
-                                # Take screenshot before clicking
-                                take_screenshot(f"before_click_slot_{i}")
-                                
-                                # Try direct click first
-                                try:
-                                    link.click()
-                                    logging.info("✅ Clicked with .click()")
-                                except:
-                                    # If that fails, use JavaScript
-                                    driver.execute_script("arguments[0].click();", link)
-                                    logging.info("✅ Clicked with JavaScript")
-                                
-                                time.sleep(3)
-                                
-                                # Check if we're on a booking page
-                                current_url = driver.current_url
-                                if 'booking' in current_url or link_text:
-                                    logging.info("✅ Navigation successful")
-                                    return complete_booking_process()
-                                else:
-                                    logging.warning("⚠️ Click didn't navigate to booking page")
-                                    
-                        except ValueError as e:
-                            logging.warning(f"Could not parse minutes from '{parts[2]}': {e}")
-                            
-            except Exception as e:
-                logging.error(f"Error checking link {i+1}: {e}")
-                continue
+                            if int(parts[2]) == target_time_minutes:
+                                logging.info(f"🎯 SLOT TROUVÉ à {hour_str}!")
+                                link.click()
+                                time.sleep(1.5)
+                                return complete_booking_process()
+                        except:
+                            continue
         
-        # FALLBACK: If exact time not found, look for available slots around the time
-        logging.info("🔍 No exact match found, looking for slots with 'Book at' text...")
-        
-        # Look for any "Book at" text that contains our time
-        book_at_elements = driver.find_elements(By.XPATH, f"//span[contains(text(), 'Book at')]")
-        for elem in book_at_elements:
-            elem_text = elem.text
-            if f"{hour:02d}:{minutes:02d}" in elem_text or f"{hour}:{minutes:02d}" in elem_text:
-                # Find the parent link
-                parent_link = elem.find_element(By.XPATH, "./ancestor::a")
-                if parent_link:
-                    logging.info(f"🎯 Found 'Book at' slot: {elem_text}")
-                    driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", parent_link)
-                    time.sleep(1)
-                    
-                    try:
-                        parent_link.click()
-                    except:
-                        driver.execute_script("arguments[0].click();", parent_link)
-                    
-                    time.sleep(3)
-                    return complete_booking_process()
-        
-        logging.warning(f"⚠️ No available slot found for {hour_str}")
+        logging.warning(f"⚠️ Aucun slot trouvé pour {hour_str}")
         return False
 
     except Exception as e:
-        logging.error(f"❌ Erreur find_and_book_slot: {e}")
-        take_screenshot("find_slot_error")
+        logging.error(f"❌ Erreur: {e}")
         return False
 
 def complete_booking_process():
     try:
-        take_screenshot("booking_form")
+        # Minimal wait
+        time.sleep(0.5)
         
-        # Wait for booking form to load
-        time.sleep(2)
-        
-        # Check if we're on a booking page
-        current_url = driver.current_url
-        page_source = driver.page_source.lower()
-        
-        if 'booking' not in current_url.lower() and 'booking' not in page_source:
-            logging.warning("⚠️ Pas sur une page de réservation")
-            return False
-        
-        # Select duration if needed
+        # Select duration quickly
         try:
-            # Try Select2 dropdown first
-            select2_dropdown = WebDriverWait(driver, 5).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, ".select2-selection, .select2-selection--single"))
-            )
+            select2_dropdown = driver.find_element(By.CSS_SELECTOR, ".select2-selection, .select2-selection--single")
             select2_dropdown.click()
-            time.sleep(0.5)
+            time.sleep(0.2)
             
-            # Select 1 hour option (usually second option)
             options = driver.find_elements(By.CSS_SELECTOR, ".select2-results__option")
             if len(options) >= 2:
                 options[1].click()
-                logging.info("✅ Durée sélectionnée (Select2)")
-            
+                logging.info("✅ Durée sélectionnée")
         except:
-            # Fallback to regular select
             try:
                 duration_select = driver.find_element(By.ID, "booking-duration")
                 Select(duration_select).select_by_index(1)
-                logging.info("✅ Durée sélectionnée (select)")
+                logging.info("✅ Durée sélectionnée")
             except:
-                logging.info("⚠️ Pas de sélection durée nécessaire")
+                pass
 
-        time.sleep(1)
+        time.sleep(0.3)
 
-        # Click Continue
-        continue_clicked = False
-        continue_selectors = [
-            "//button[contains(text(), 'Continue')]",
-            "//button[contains(text(), 'Next')]",
-            "//button[contains(text(), 'Suivant')]",
-            "//input[@type='submit' and contains(@value, 'Continue')]",
-            "//a[contains(text(), 'Continue')]",
-            "//button[@type='submit']"
-        ]
-        
-        for selector in continue_selectors:
+        # Click Continue - try the most common selector first
+        try:
+            continue_btn = driver.find_element(By.XPATH, "//button[contains(text(), 'Continue')]")
+            continue_btn.click()
+            logging.info("✅ Continue cliqué")
+            time.sleep(1)
+        except:
+            # Quick fallback
             try:
-                continue_btn = driver.find_element(By.XPATH, selector)
-                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", continue_btn)
-                time.sleep(0.5)
+                continue_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
                 continue_btn.click()
-                logging.info(f"✅ Continue cliqué avec: {selector}")
-                continue_clicked = True
-                time.sleep(2)
-                break
+                logging.info("✅ Continue cliqué (submit)")
+                time.sleep(1)
             except:
-                continue
+                logging.error("❌ Bouton Continue non trouvé")
+                return False
 
-        if not continue_clicked:
-            logging.error("❌ Bouton Continue non trouvé")
-            return False
-
-        # Click Pay Now
-        pay_clicked = False
-        pay_selectors = [
-            (By.ID, "paynow"),
-            (By.XPATH, "//button[contains(text(), 'Pay')]"),
-            (By.XPATH, "//button[contains(text(), 'Payer')]"),
-            (By.XPATH, "//input[@type='submit' and contains(@value, 'Pay')]"),
-            (By.XPATH, "//a[contains(text(), 'Pay')]")
-        ]
-        
-        for by, selector in pay_selectors:
-            try:
-                pay_btn = WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable((by, selector))
-                )
-                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", pay_btn)
-                time.sleep(0.5)
-                pay_btn.click()
-                logging.info(f"✅ Pay Now cliqué avec: {selector}")
-                pay_clicked = True
-                time.sleep(2)
-                break
-            except:
-                continue
-
-        if not pay_clicked:
+        # Click Pay Now - direct ID first
+        try:
+            pay_btn = WebDriverWait(driver, 3).until(
+                EC.element_to_be_clickable((By.ID, "paynow"))
+            )
+            pay_btn.click()
+            logging.info("✅ Pay Now cliqué")
+            time.sleep(1)
+        except:
             logging.error("❌ Bouton Pay Now non trouvé")
             return False
 
@@ -386,8 +285,7 @@ def complete_booking_process():
         return handle_stripe_payment()
 
     except Exception as e:
-        logging.error(f"❌ Erreur complete_booking_process: {e}")
-        take_screenshot("booking_process_error")
+        logging.error(f"❌ Erreur booking: {e}")
         return False
 
 def handle_stripe_payment():
@@ -529,12 +427,12 @@ try:
             break
         else:
             if attempt < max_attempts and (time.time() - start_time) < max_duration - 10:
-                refresh_delay = 1.5 if is_logged_in else 3.0
-                logging.info(f"⏳ Actualisation dans {refresh_delay}s...")
+                # Ultra fast refresh for logged-in users
+                refresh_delay = 0.5 if is_logged_in else 1.5
                 time.sleep(refresh_delay)
                 # Refresh the page
                 driver.refresh()
-                time.sleep(2)
+                time.sleep(0.5)
             else:
                 break
 
