@@ -186,169 +186,210 @@ def find_and_book_slot():
 
         logging.info(f"🔍 Recherche créneaux disponibles à {hour_str}...")
         
-        # Try multiple selectors for available slots
+        # First, let's understand the page structure better
+        # Look for price elements which indicate available slots
+        price_selectors = [
+            "td:contains('£')",  # Table cells containing price
+            "div:contains('£')",  # Divs containing price
+            "*:contains('£3.60')",  # Any element with the standard price £3.60
+            "*:contains('£4.95')",  # Any element with the higher price £4.95
+            ".price",  # Elements with price class
+            "[class*='price']"  # Elements with price in class name
+        ]
+        
+        # Find all elements that might be bookable slots
+        all_potential_slots = []
+        
+        # Method 1: Find links in table cells or divs that are in the same row as our target time
+        try:
+            # Find the row containing our target time
+            time_text_variations = [
+                f"{hour:02d}:{minutes:02d}",  # 11:00
+                f"{hour}:{minutes:02d}",       # 11:00 (without leading zero)
+                f"{hour:02d}.{minutes:02d}",   # 11.00
+                f"{hour}h{minutes:02d}" if minutes > 0 else f"{hour}h"  # 11h00 or 11h
+            ]
+            
+            for time_text in time_text_variations:
+                # Find elements containing our time
+                time_elements = driver.find_elements(By.XPATH, f"//*[contains(text(), '{time_text}')]")
+                logging.info(f"🕐 Found {len(time_elements)} elements with time text '{time_text}'")
+                
+                for time_elem in time_elements:
+                    # Look for slots in the same row (tr) or nearby containers
+                    try:
+                        # Find parent row if in a table
+                        parent_row = time_elem.find_element(By.XPATH, "./ancestor::tr")
+                        # Find all links or clickable elements in this row
+                        row_links = parent_row.find_elements(By.CSS_SELECTOR, "a, td[onclick], div[onclick]")
+                        
+                        for link in row_links:
+                            # Check if it's an available slot (has price or not marked as booked)
+                            link_text = link.text.strip()
+                            link_html = link.get_attribute('innerHTML') or ""
+                            
+                            if ('£' in link_text or '£' in link_html) and 'booked' not in link_text.lower():
+                                all_potential_slots.append(link)
+                                logging.info(f"✅ Found potential slot in row: {link_text}")
+                    except:
+                        pass
+                    
+                    # Also look for adjacent cells/divs
+                    try:
+                        following_cells = time_elem.find_elements(By.XPATH, "./following::td[position()<=4] | ./following::div[position()<=4]")
+                        for cell in following_cells:
+                            cell_links = cell.find_elements(By.TAG_NAME, "a")
+                            for link in cell_links:
+                                if '£' in link.text or '£' in cell.text:
+                                    all_potential_slots.append(link)
+                                    logging.info(f"✅ Found potential adjacent slot: {link.text}")
+                    except:
+                        pass
+        except Exception as e:
+            logging.warning(f"Erreur recherche par ligne: {e}")
+        
+        # Method 2: Find all slots with prices
+        try:
+            # Look for any element containing a price that is also a link
+            price_elements = driver.find_elements(By.XPATH, "//*[contains(text(), '£')]")
+            logging.info(f"💰 Found {len(price_elements)} price elements")
+            
+            for price_elem in price_elements:
+                # Check if it's a link or has a parent link
+                if price_elem.tag_name == 'a':
+                    all_potential_slots.append(price_elem)
+                else:
+                    parent_links = price_elem.find_elements(By.XPATH, "./ancestor::a")
+                    if parent_links:
+                        all_potential_slots.append(parent_links[0])
+                    else:
+                        # Check if the price element itself is clickable
+                        onclick = price_elem.get_attribute('onclick')
+                        if onclick:
+                            all_potential_slots.append(price_elem)
+        except Exception as e:
+            logging.warning(f"Erreur recherche prix: {e}")
+        
+        # Method 3: Original selectors (fallback)
         selectors = [
             "a.book-interval.not-booked",
             "a.book-interval:not(.booked)",
             "a[href*='booking']:not(.booked)",
             ".not-booked a",
             "a.available-booking-slot",
-            "div.session-break a",
-            "div.resource-session a"
+            "td a[href*='booking']",  # Links in table cells
+            "td[onclick]",  # Clickable table cells
         ]
         
-        available_slots = []
         for selector in selectors:
-            slots = driver.find_elements(By.CSS_SELECTOR, selector)
-            if slots:
-                available_slots.extend(slots)
-                logging.info(f"✅ Trouvé {len(slots)} créneaux avec selector: {selector}")
-        
-        # Remove duplicates
-        unique_slots = []
-        seen_hrefs = set()
-        for slot in available_slots:
-            href = slot.get_attribute('href') or ""
-            if href and href not in seen_hrefs:
-                seen_hrefs.add(href)
-                unique_slots.append(slot)
-        
-        available_slots = unique_slots
-        logging.info(f"📊 Total créneaux uniques disponibles: {len(available_slots)}")
-        
-        if not available_slots:
-            # Try to find any clickable time slots in the page
-            logging.info("🔍 Recherche alternative de créneaux...")
-            
-            # Look for time text in the page
-            all_elements = driver.find_elements(By.XPATH, f"//*[contains(text(), '{hour_str}') or contains(text(), '{hour}:00') or contains(text(), '{hour}h00')]")
-            for elem in all_elements:
-                # Check if it's a link or has a parent link
-                if elem.tag_name == 'a':
-                    available_slots.append(elem)
-                else:
-                    parent_link = elem.find_elements(By.XPATH, "./ancestor::a")
-                    if parent_link:
-                        available_slots.append(parent_link[0])
-            
-            logging.info(f"📊 Créneaux trouvés par recherche texte: {len(available_slots)}")
-
-        if not available_slots:
-            logging.warning("⚠️ Aucun créneau disponible trouvé")
-            # Log page structure for debugging
-            all_links = driver.find_elements(By.TAG_NAME, "a")
-            logging.info(f"🔍 Total liens sur la page: {len(all_links)}")
-            for i, link in enumerate(all_links[:10]):  # Log first 10 links
-                href = link.get_attribute('href') or ""
-                text = link.text.strip()
-                logging.info(f"   Link {i}: text='{text}', href='{href}'")
-            return False
-
-        # Target time in minutes from midnight
-        target_minutes = hour * 60 + minutes
-        logging.info(f"🎯 Recherche créneaux pour {target_minutes} minutes ({hour_str})")
-        
-        # Look for slots matching our target time
-        for i, slot in enumerate(available_slots):
             try:
-                # Get all available information about the slot
-                href = slot.get_attribute('href') or ""
-                data_test_id = slot.get_attribute('data-test-id') or ""
+                slots = driver.find_elements(By.CSS_SELECTOR, selector)
+                if slots:
+                    all_potential_slots.extend(slots)
+                    logging.info(f"✅ Trouvé {len(slots)} créneaux avec selector: {selector}")
+            except:
+                pass
+        
+        # Remove duplicates and filter
+        unique_slots = []
+        seen_elements = set()
+        
+        for slot in all_potential_slots:
+            try:
+                # Create a unique identifier for the element
+                elem_id = f"{slot.location['x']}_{slot.location['y']}_{slot.size['width']}_{slot.size['height']}"
+                if elem_id not in seen_elements:
+                    seen_elements.add(elem_id)
+                    # Only add if it's not marked as booked
+                    slot_text = slot.text.strip().lower()
+                    if 'booked' not in slot_text and slot.is_displayed():
+                        unique_slots.append(slot)
+            except:
+                pass
+        
+        logging.info(f"📊 Total créneaux uniques potentiels: {len(unique_slots)}")
+        
+        if not unique_slots:
+            logging.warning("⚠️ Aucun créneau disponible trouvé")
+            # Debug: log page structure
+            all_tds = driver.find_elements(By.TAG_NAME, "td")[:20]
+            logging.info(f"🔍 Premières cellules de tableau:")
+            for i, td in enumerate(all_tds):
+                logging.info(f"   TD {i}: text='{td.text.strip()}', onclick='{td.get_attribute('onclick')}'")
+            return False
+        
+        # Now check each unique slot to see if it's for our target time
+        target_minutes = hour * 60 + minutes
+        logging.info(f"🎯 Vérification des {len(unique_slots)} créneaux pour {hour_str}")
+        
+        for i, slot in enumerate(unique_slots):
+            try:
+                # Get slot information
                 slot_text = slot.text.strip()
-                title = slot.get_attribute('title') or ""
+                href = slot.get_attribute('href') or ""
+                onclick = slot.get_attribute('onclick') or ""
+                parent_row_text = ""
                 
-                # Log slot details
-                logging.info(f"   Slot {i+1}:")
-                logging.info(f"     Text: '{slot_text}'")
-                logging.info(f"     Href: '{href}'")
-                logging.info(f"     Title: '{title}'")
-                logging.info(f"     data-test-id: '{data_test_id}'")
+                # Try to get the time from the parent row
+                try:
+                    parent_row = slot.find_element(By.XPATH, "./ancestor::tr")
+                    parent_row_text = parent_row.text
+                except:
+                    pass
                 
-                # Try to extract time from various sources
-                slot_matches = False
+                logging.info(f"   Slot {i+1}: text='{slot_text}', row='{parent_row_text[:50]}...'")
                 
-                # Method 1: Check data-test-id (existing method)
-                if '|' in data_test_id:
-                    parts = data_test_id.split('|')
-                    if len(parts) >= 3:
-                        try:
-                            slot_minutes_int = int(parts[-1])
-                            if slot_minutes_int == target_minutes:
-                                slot_matches = True
-                                logging.info(f"✅ Match par data-test-id: {slot_minutes_int} minutes")
-                        except ValueError:
-                            pass
-                
-                # Method 2: Check text content
-                time_patterns = [
-                    hour_str,  # 07:00
-                    f"{hour}:{minutes:02d}",  # 7:00
-                    f"{hour:02d}.{minutes:02d}",  # 07.00
-                    f"{hour}h{minutes:02d}" if minutes > 0 else f"{hour}h",  # 7h00 or 7h
-                    f"{hour:02d}h{minutes:02d}" if minutes > 0 else f"{hour:02d}h",  # 07h00 or 07h
-                ]
-                
-                for pattern in time_patterns:
-                    if pattern in slot_text or pattern in title:
-                        slot_matches = True
-                        logging.info(f"✅ Match par texte: '{pattern}'")
+                # Check if this slot is in the correct time row
+                time_found = False
+                for time_text in [f"{hour:02d}:{minutes:02d}", f"{hour}:{minutes:02d}", f"{hour:02d}.{minutes:02d}"]:
+                    if time_text in parent_row_text:
+                        time_found = True
+                        logging.info(f"✅ Slot trouvé pour {time_text}!")
                         break
                 
-                # Method 3: Check href for time information
-                if href:
-                    # Look for time in URL parameters
-                    time_in_url = re.search(r'[?&]time=(\d+)', href)
-                    if time_in_url:
-                        url_minutes = int(time_in_url.group(1))
-                        if url_minutes == target_minutes:
-                            slot_matches = True
-                            logging.info(f"✅ Match par URL: {url_minutes} minutes")
-                
-                if slot_matches:
-                    logging.info(f"🎯 CRÉNEAU TROUVÉ!")
+                if time_found and ('£' in slot_text or '£' in parent_row_text):
+                    logging.info(f"🎯 CRÉNEAU DISPONIBLE TROUVÉ à {hour_str}!")
                     
-                    # Try to click or navigate to the slot
-                    if href and 'booking' in href.lower():
-                        logging.info(f"🔗 Navigation vers: {href}")
-                        driver.get(href)
-                        time.sleep(3)
-                        return complete_booking_process()
-                    else:
-                        # Try clicking the element
-                        logging.info("🖱️ Clic sur le créneau")
+                    # Try to book this slot
+                    try:
+                        # Scroll to element
                         driver.execute_script("arguments[0].scrollIntoView({behavior: 'auto', block: 'center'});", slot)
                         time.sleep(1)
                         
-                        # Try multiple click methods
-                        try:
-                            slot.click()
-                        except:
-                            driver.execute_script("arguments[0].click();", slot)
+                        # Try clicking
+                        if href:
+                            logging.info(f"🔗 Navigation vers: {href}")
+                            driver.get(href)
+                        elif onclick:
+                            logging.info(f"🖱️ Execution onclick: {onclick}")
+                            driver.execute_script(onclick)
+                        else:
+                            logging.info("🖱️ Clic direct sur l'élément")
+                            try:
+                                slot.click()
+                            except:
+                                driver.execute_script("arguments[0].click();", slot)
                         
                         time.sleep(3)
-                        return complete_booking_process()
+                        
+                        # Check if we moved to a booking page
+                        if 'booking' in driver.current_url.lower() or 'reserve' in driver.current_url.lower():
+                            return complete_booking_process()
+                        else:
+                            logging.warning("⚠️ Pas redirigé vers la page de réservation")
+                            
+                    except Exception as e:
+                        logging.error(f"Erreur lors du clic: {e}")
+                        continue
                         
             except Exception as e:
                 logging.warning(f"Erreur vérification slot {i+1}: {e}")
                 continue
-
-        logging.warning(f"⚠️ Aucun créneau trouvé pour {hour_str}")
         
-        # Final attempt: look for any available slot at the desired time
-        logging.info("🔍 Tentative finale: recherche par navigation...")
+        logging.warning(f"⚠️ Aucun créneau disponible trouvé pour {hour_str}")
         
-        # Try to find time headers or navigation elements
-        time_elements = driver.find_elements(By.XPATH, f"//*[contains(@class, 'time') and (contains(text(), '{hour}') or contains(text(), '{hour_str}'))]")
-        for elem in time_elements:
-            logging.info(f"Found time element: {elem.text}")
-            # Look for nearby available slots
-            nearby_links = elem.find_elements(By.XPATH, ".//following-sibling::*//a | .//preceding-sibling::*//a | .//a")
-            for link in nearby_links[:5]:  # Check first 5 nearby links
-                if 'book' in link.get_attribute('href', '').lower():
-                    logging.info(f"Found nearby booking link: {link.get_attribute('href')}")
-                    driver.get(link.get_attribute('href'))
-                    time.sleep(3)
-                    return complete_booking_process()
+        # Take a screenshot for debugging
+        take_screenshot("no_slots_found")
         
         return False
 
