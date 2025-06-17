@@ -1,7 +1,3 @@
-import os
-import time
-import logging
-import random
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -9,19 +5,23 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException
 from webdriver_manager.chrome import ChromeDriverManager
+import time
+import os
+import logging
 from datetime import datetime
+import random
 
-# Logging Configuration
+# --- LOGGING CONFIGURATION (your style) ---
 logging.basicConfig(
     level=logging.INFO,
-    format='[%(process)d] %(asctime)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(f'booking_{os.getpid()}.log'),
         logging.StreamHandler()
     ]
 )
 
-# User-agent pool
+# --- CHROME OPTIONS ---
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
@@ -38,7 +38,7 @@ def get_chrome_options():
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option('useAutomationExtension', False)
-    # Randomize user-agent
+    # Randomize user-agent for stealth
     ua = random.choice(USER_AGENTS)
     options.add_argument(f"user-agent={ua}")
     return options
@@ -48,21 +48,21 @@ def take_screenshot(driver, name):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"screenshot_{name}_{os.getpid()}_{timestamp}.png"
         driver.save_screenshot(filename)
-        logging.info(f"📸 Screenshot saved: {filename}")
+        logging.info(f"📸 Screenshot sauvegardé: {filename}")
     except Exception as e:
-        logging.error(f"Screenshot error: {e}")
+        logging.error(f"Erreur screenshot: {e}")
 
 def login_first(driver, username, password):
     try:
         # Check if already logged in
         page = driver.page_source
         if "My bookings" in page or "Log out" in page:
-            logging.info("✅ Already logged in!")
+            logging.info("✅ Déjà connecté!")
             return True
 
-        logging.info("🔐 Attempting login...")
+        logging.info("🔐 Processus de connexion...")
 
-        # Try to find any sign in link or button
+        # Try to find "Sign in" button or link
         sign_in = None
         for xpath in [
             "//a[contains(text(), 'Sign in') or contains(@href, 'login')]",
@@ -73,7 +73,7 @@ def login_first(driver, username, password):
                     EC.element_to_be_clickable((By.XPATH, xpath))
                 )
                 sign_in.click()
-                logging.info("✅ Clicked Sign in")
+                logging.info("✅ Cliqué sur Sign in")
                 time.sleep(1)
                 break
             except Exception:
@@ -87,35 +87,32 @@ def login_first(driver, username, password):
                     "//input[contains(@placeholder, 'Username') or @name='username' or @id='username']"
                 ))
             )
-            logging.info("✅ Username field appeared")
+            logging.info("✅ Zone username trouvée")
         except Exception as e:
-            logging.error("❌ Username field not found!")
+            logging.error("❌ Zone username non trouvée!")
             take_screenshot(driver, "login_no_username")
-            # Dump form HTML for debug
             html = driver.find_element(By.TAG_NAME, "body").get_attribute("innerHTML")
-            logging.error("Login area HTML snippet:\n" + html[:2000])
+            logging.error("Zone login HTML snippet:\n" + html[:2000])
             return False
 
-        # Find password field
         try:
             password_field = driver.find_element(
                 By.XPATH,
                 "//input[contains(@placeholder, 'Password') or @name='password' or @id='password' or @type='password']"
             )
         except Exception as e:
-            logging.error("❌ Password field not found!")
+            logging.error("❌ Zone password non trouvée!")
             take_screenshot(driver, "login_no_password")
             html = driver.find_element(By.TAG_NAME, "body").get_attribute("innerHTML")
-            logging.error("Login area HTML snippet:\n" + html[:2000])
+            logging.error("Zone login HTML snippet:\n" + html[:2000])
             return False
 
-        # Enter credentials and submit
         try:
             username_field.clear()
             username_field.send_keys(username)
             password_field.clear()
             password_field.send_keys(password)
-            logging.info("✅ Entered credentials")
+            logging.info("✅ Credentials saisis")
 
             # Find and click submit
             submit_btn = None
@@ -131,49 +128,52 @@ def login_first(driver, username, password):
                     continue
             if submit_btn:
                 submit_btn.click()
-                logging.info("✅ Clicked Login button.")
+                logging.info("✅ Login soumis")
             else:
-                logging.error("❌ Login/submit button not found!")
+                logging.error("❌ Bouton Login non trouvé!")
                 take_screenshot(driver, "login_no_submit")
                 return False
 
-            # Wait to be logged in or see error
+            # Wait for login result
             time.sleep(2)
             page_res = driver.page_source
             if "My bookings" in page_res or "Log out" in page_res:
-                logging.info("✅ Successfully logged in!")
+                logging.info("✅ Login réussi!")
                 return True
             elif "incorrect" in page_res.lower() or "invalid" in page_res.lower():
-                logging.error("❌ Login failed: Credentials incorrect?")
+                logging.error("❌ Login échoué: Credentials incorrects?")
                 take_screenshot(driver, "login_bad_creds")
                 return False
             else:
-                logging.warning("⚠️ Login may have failed (no confirmation text found).")
+                logging.warning("⚠️ Login incertain (pas de confirmation trouvée).")
                 take_screenshot(driver, "login_unclear")
                 return False
 
         except Exception as e:
-            logging.error(f"❌ Error during credential entry or submit: {e}")
+            logging.error(f"❌ Erreur lors de la saisie ou du submit: {e}")
             take_screenshot(driver, "login_submit_error")
             return False
 
     except Exception as e:
-        logging.error(f"❌ Unhandled login error: {e}")
+        logging.error(f"❌ Erreur login non gérée: {e}")
         take_screenshot(driver, "login_unhandled")
         return False
+
 def wait_for_page_load(driver):
     try:
         WebDriverWait(driver, 5).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "a.book-interval"))
         )
+        time.sleep(0.1)
+        logging.info("✅ Page de réservation chargée")
         return True
     except TimeoutException:
-        logging.warning("⚠️ Timeout loading page")
+        logging.warning("⚠️ Timeout lors du chargement de la page")
         return False
 
 def find_and_book_slot_all_courts(driver, total_minutes, hour_str, court_filter=None):
     try:
-        # Accept cookies first - but don't wait if not there
+        # Accept cookies first if present
         try:
             cookie_btn = driver.find_element(By.CLASS_NAME, "osano-cm-accept-all")
             cookie_btn.click()
@@ -184,9 +184,9 @@ def find_and_book_slot_all_courts(driver, total_minutes, hour_str, court_filter=
         if not wait_for_page_load(driver):
             return False
 
-        logging.info(f"🔍 Searching slots at {hour_str}...")
+        logging.info(f"🔍 Recherche créneaux à {hour_str} sur tous les courts...")
 
-        # Filter for a specific court if court_filter is set (e.g. "Court 2")
+        # Filter for a specific court if court_filter is set
         if court_filter:
             xpath_query = f"//a[contains(@class,'book-interval') and contains(@class,'not-booked') and contains(@data-test-id, '|{total_minutes}') and contains(@data-test-id, '{court_filter}') and not(contains(@class, 'disabled'))]"
         else:
@@ -197,28 +197,27 @@ def find_and_book_slot_all_courts(driver, total_minutes, hour_str, court_filter=
         if slots:
             for slot in slots:
                 try:
-                    logging.info("🎯 SLOT AVAILABLE, trying to book...")
+                    logging.info("🎯 SLOT DISPONIBLE, tentative de réservation...")
                     slot.click()
                     if complete_booking_process(driver):
                         return True
                 except ElementClickInterceptedException:
-                    logging.warning("⚠️ Slot click intercepted, trying next.")
+                    logging.warning("⚠️ Slot click intercepté, tentative suivante.")
                     continue
 
-        logging.debug(f"No slot found for {hour_str} (court_filter={court_filter})")
+        logging.debug(f"Aucun slot trouvé pour {hour_str} (court_filter={court_filter})")
         return False
 
     except Exception as e:
-        logging.error(f"❌ Slot search error: {e}")
+        logging.error(f"❌ Erreur recherche slot: {e}")
         return False
 
 def complete_booking_process(driver):
     try:
-        # Try to select duration
         try:
             duration_select = driver.find_element(By.ID, "booking-duration")
             Select(duration_select).select_by_index(1)
-            logging.info("✅ Duration selected (booking-duration)")
+            logging.info("✅ Durée sélectionnée (booking-duration)")
         except:
             try:
                 select2_dropdown = driver.find_element(By.CSS_SELECTOR, ".select2-selection, .select2-selection--single")
@@ -226,19 +225,21 @@ def complete_booking_process(driver):
                 options = driver.find_elements(By.CSS_SELECTOR, ".select2-results__option")
                 if len(options) >= 2:
                     options[1].click()
-                    logging.info("✅ Duration selected (select2)")
+                    logging.info("✅ Durée sélectionnée (select2)")
             except:
                 pass
 
         try:
             continue_btn = driver.find_element(By.XPATH, "//button[contains(text(), 'Continue')]")
             continue_btn.click()
+            logging.info("✅ Continue cliqué")
         except:
             try:
                 continue_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
                 continue_btn.click()
+                logging.info("✅ Continue cliqué (submit)")
             except:
-                logging.error("❌ Continue button not found")
+                logging.error("❌ Bouton Continue non trouvé")
                 return False
 
         try:
@@ -246,24 +247,26 @@ def complete_booking_process(driver):
                 EC.element_to_be_clickable((By.ID, "paynow"))
             )
             pay_btn.click()
+            logging.info("✅ Pay Now cliqué")
         except:
-            logging.error("❌ Pay Now button not found")
+            logging.error("❌ Bouton Pay Now non trouvé")
             return False
 
         return handle_stripe_payment(driver)
 
     except Exception as e:
-        logging.error(f"❌ Booking process error: {e}")
+        logging.error(f"❌ Erreur booking: {e}")
         return False
 
 def handle_stripe_payment(driver):
     try:
-        logging.info("💳 Stripe payment...")
+        logging.info("💳 Traitement paiement Stripe...")
         iframes = WebDriverWait(driver, 12).until(
             EC.presence_of_all_elements_located((By.CSS_SELECTOR, "iframe[name^='__privateStripeFrame']"))
         )
+        logging.info(f"✅ {len(iframes)} iframes Stripe trouvées")
         if len(iframes) < 3:
-            logging.error("❌ Not enough Stripe iframes")
+            logging.error("❌ Pas assez d'iframes Stripe")
             return False
 
         # Card number
@@ -274,6 +277,7 @@ def handle_stripe_payment(driver):
         card_field.clear()
         card_field.send_keys(os.environ.get('CARD_NUMBER', '5555555555554444'))
         driver.switch_to.default_content()
+        logging.info("✅ Numéro carte saisi")
 
         # Expiry date
         driver.switch_to.frame(iframes[1])
@@ -283,6 +287,7 @@ def handle_stripe_payment(driver):
         expiry_field.clear()
         expiry_field.send_keys(os.environ.get('CARD_EXPIRY', '04/30'))
         driver.switch_to.default_content()
+        logging.info("✅ Date expiration saisie")
 
         # CVC
         driver.switch_to.frame(iframes[2])
@@ -292,6 +297,7 @@ def handle_stripe_payment(driver):
         cvc_field.clear()
         cvc_field.send_keys(os.environ.get('CARD_CVC', '666'))
         driver.switch_to.default_content()
+        logging.info("✅ CVC saisi")
 
         # Submit payment
         submit_btn = WebDriverWait(driver, 6).until(
@@ -299,37 +305,30 @@ def handle_stripe_payment(driver):
         )
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", submit_btn)
         submit_btn.click()
+        logging.info("✅ Paiement soumis")
 
         try:
             WebDriverWait(driver, 14).until(
                 lambda d: "confirmation" in d.current_url.lower() or "success" in d.current_url.lower()
             )
-            logging.info("🎉 BOOKING CONFIRMED!")
+            logging.info("🎉 RÉSERVATION CONFIRMÉE!")
             return True
         except:
             time.sleep(3)
             page_source = driver.page_source.lower()
             if any(word in page_source for word in ["confirmed", "success", "booked", "reserved", "confirmation"]):
-                logging.info("🎉 BOOKING PROBABLY CONFIRMED!")
+                logging.info("🎉 RÉSERVATION PROBABLEMENT CONFIRMÉE!")
                 return True
             else:
-                logging.error("❌ No confirmation found")
+                logging.error("❌ Pas de confirmation trouvée")
                 return False
 
     except Exception as e:
-        logging.error(f"❌ Stripe payment error: {e}")
+        logging.error(f"❌ Erreur paiement Stripe: {e}")
         take_screenshot(driver, "stripe_error")
         return False
 
 def main():
-    # Print a warning if not using NTP for true clock sync
-    try:
-        import ntplib
-        logging.info("System NTP sync recommended for lowest latency!")
-    except ImportError:
-        logging.warning("ntplib not installed. Ensure your system clock is NTP-synced for best performance!")
-
-    # Environment Variables
     account_number = os.environ.get('ACCOUNT', '1')
     username = os.environ.get('TENNIS_USERNAME2') if account_number == '2' else os.environ.get('TENNIS_USERNAME')
     password = os.environ.get('TENNIS_PASSWORD')
@@ -354,48 +353,52 @@ def main():
         url_success = False
         for url in base_urls:
             try:
+                logging.info(f"🌐 Essai navigation: {url}")
                 driver.get(url)
                 time.sleep(1)
                 if "booking" in driver.current_url.lower() or "calendar" in driver.current_url.lower():
                     url_success = True
+                    logging.info(f"✅ URL réussie: {url}")
                     break
             except:
                 continue
         if not url_success:
-            logging.error("❌ Could not reach booking page")
+            logging.error("❌ Impossible de naviguer vers la page de réservation")
             return
 
         if not login_first(driver, username, password):
-            logging.error("❌ Login failed")
+            logging.error("❌ Login échoué")
             return
         driver.get(base_urls[0])
         time.sleep(1)
 
-        # Main booking loop
+        # Main booking loop (ultra-fast)
         start_time = time.time()
         max_duration = int(os.environ.get("MAX_DURATION", "1800"))  # seconds
         attempt = 0
         while True:
             attempt += 1
             elapsed = int(time.time() - start_time)
-            logging.info(f"🔄 Attempt {attempt} (elapsed: {elapsed}s)")
+            logging.info(f"🔄 Tentative {attempt} (temps: {elapsed}s)")
             if find_and_book_slot_all_courts(driver, total_minutes, hour_str, court_filter):
-                logging.info("🎉 RESERVATION SUCCESSFUL (exit loop)")
+                logging.info("🎉 RÉSERVATION RÉUSSIE!")
                 break
             if max_duration and elapsed > max_duration:
-                logging.warning("⏳ Max duration reached, stopping.")
+                logging.warning("⏳ Durée maximale atteinte, arrêt du script.")
                 break
-            # No fixed sleep, just a micro-random delay to avoid spamming too hard
             time.sleep(random.uniform(0.05, 0.25))
             driver.refresh()
 
+        total_time = int(time.time() - start_time)
+        logging.info(f"✅ Script terminé en {total_time}s après {attempt} tentatives")
+
     except Exception as e:
-        logging.error(f"❌ Critical error: {e}")
+        logging.error(f"❌ Erreur critique: {e}")
         take_screenshot(driver, "critical_error")
     finally:
         if driver:
             driver.quit()
-            logging.info("🏁 Driver closed")
+            logging.info("🏁 Driver fermé")
 
 if __name__ == "__main__":
     main()
