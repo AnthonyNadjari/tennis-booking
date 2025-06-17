@@ -257,7 +257,7 @@ def complete_booking_process():
             continue_btn = driver.find_element(By.XPATH, "//button[contains(text(), 'Continue')]")
             continue_btn.click()
             logging.info("✅ Continue cliqué")
-            time.sleep(1)
+            time.sleep(2)  # Give more time for payment page to load
         except:
             # Quick fallback
             try:
@@ -269,17 +269,30 @@ def complete_booking_process():
                 logging.error("❌ Bouton Continue non trouvé")
                 return False
 
-        # Click Pay Now - direct ID first
+        # Click Pay Now - direct ID first, but wait for it to be clickable
         try:
-            pay_btn = WebDriverWait(driver, 3).until(
+            # Wait a bit for the page to fully load and button to be ready
+            time.sleep(1)
+            
+            pay_btn = WebDriverWait(driver, 5).until(
                 EC.element_to_be_clickable((By.ID, "paynow"))
             )
             pay_btn.click()
-            logging.info("✅ Pay Now cliqué")
+            logging.info("✅ Confirm and pay cliqué")
             time.sleep(1)
         except:
-            logging.error("❌ Bouton Pay Now non trouvé")
-            return False
+            # Try by button text
+            try:
+                pay_btn = driver.find_element(By.XPATH, "//button[contains(text(), 'Confirm and pay')]")
+                pay_btn.click()
+                logging.info("✅ Confirm and pay cliqué (par texte)")
+                time.sleep(1)
+            except:
+                logging.error("❌ Bouton Confirm and pay non trouvé")
+                # Log page source to debug
+                logging.error(f"Current URL: {driver.current_url}")
+                take_screenshot("pay_button_not_found")
+                return False
 
         # Handle Stripe payment
         return handle_stripe_payment()
@@ -291,61 +304,99 @@ def complete_booking_process():
 def handle_stripe_payment():
     try:
         logging.info("💳 Traitement paiement Stripe...")
-        take_screenshot("stripe_form")
         
-        # Wait for Stripe iframes to load
-        iframes = WebDriverWait(driver, 15).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "iframe[name^='__privateStripeFrame']"))
-        )
-        logging.info(f"✅ {len(iframes)} iframes Stripe trouvées")
+        # Wait for Stripe to load - could be a modal or iframes
+        time.sleep(2)
+        
+        # Check if it's Stripe Checkout (modal) or inline iframes
+        try:
+            # First check for Stripe iframes (inline payment)
+            iframes = driver.find_elements(By.CSS_SELECTOR, "iframe[name^='__privateStripeFrame']")
+            
+            if len(iframes) >= 3:
+                logging.info(f"✅ {len(iframes)} iframes Stripe trouvées - paiement inline")
+                
+                # Card number
+                driver.switch_to.frame(iframes[0])
+                card_field = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cardnumber'], input[placeholder*='card'], input[data-elements-stable-field-name='cardNumber']"))
+                )
+                card_field.clear()
+                card_field.send_keys(card_number)
+                driver.switch_to.default_content()
+                logging.info("✅ Numéro carte saisi")
 
-        if len(iframes) < 3:
-            logging.error("❌ Pas assez d'iframes Stripe")
+                # Expiry date
+                driver.switch_to.frame(iframes[1])
+                expiry_field = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='exp-date'], input[placeholder*='MM'], input[data-elements-stable-field-name='cardExpiry']"))
+                )
+                expiry_field.clear()
+                expiry_field.send_keys(card_expiry)
+                driver.switch_to.default_content()
+                logging.info("✅ Date expiration saisie")
+
+                # CVC
+                driver.switch_to.frame(iframes[2])
+                cvc_field = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cvc'], input[placeholder*='CVC'], input[data-elements-stable-field-name='cardCvc']"))
+                )
+                cvc_field.clear()
+                cvc_field.send_keys(card_cvc)
+                driver.switch_to.default_content()
+                logging.info("✅ CVC saisi")
+
+                # Submit payment
+                submit_btn = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.ID, "cs-stripe-elements-submit-button"))
+                )
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", submit_btn)
+                time.sleep(0.5)
+                submit_btn.click()
+                logging.info("✅ Paiement soumis")
+                
+            else:
+                # Check for Stripe Checkout modal/iframe
+                logging.info("🔍 Recherche Stripe Checkout...")
+                
+                # Wait for Stripe Checkout iframe
+                checkout_iframe = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "iframe[name='stripe_checkout_app'], iframe[src*='checkout.stripe.com']"))
+                )
+                
+                logging.info("✅ Stripe Checkout trouvé")
+                driver.switch_to.frame(checkout_iframe)
+                
+                # Fill card details in Checkout
+                card_input = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder*='Card number'], input[name='cardNumber']"))
+                )
+                card_input.send_keys(card_number)
+                
+                # Expiry
+                expiry_input = driver.find_element(By.CSS_SELECTOR, "input[placeholder*='MM / YY'], input[name='cardExpiry']")
+                expiry_input.send_keys(card_expiry)
+                
+                # CVC
+                cvc_input = driver.find_element(By.CSS_SELECTOR, "input[placeholder*='CVC'], input[name='cardCvc']")
+                cvc_input.send_keys(card_cvc)
+                
+                # Submit
+                submit_btn = driver.find_element(By.CSS_SELECTOR, "button[type='submit'], .SubmitButton")
+                submit_btn.click()
+                
+                driver.switch_to.default_content()
+                logging.info("✅ Paiement Checkout soumis")
+
+        except Exception as e:
+            logging.error(f"❌ Erreur détection type de paiement: {e}")
+            take_screenshot("stripe_detection_error")
             return False
-
-        # Card number
-        driver.switch_to.frame(iframes[0])
-        card_field = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cardnumber'], input[placeholder*='card'], input[data-elements-stable-field-name='cardNumber']"))
-        )
-        card_field.clear()
-        card_field.send_keys(card_number)
-        driver.switch_to.default_content()
-        logging.info("✅ Numéro carte saisi")
-
-        # Expiry date
-        driver.switch_to.frame(iframes[1])
-        expiry_field = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='exp-date'], input[placeholder*='MM'], input[data-elements-stable-field-name='cardExpiry']"))
-        )
-        expiry_field.clear()
-        expiry_field.send_keys(card_expiry)
-        driver.switch_to.default_content()
-        logging.info("✅ Date expiration saisie")
-
-        # CVC
-        driver.switch_to.frame(iframes[2])
-        cvc_field = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cvc'], input[placeholder*='CVC'], input[data-elements-stable-field-name='cardCvc']"))
-        )
-        cvc_field.clear()
-        cvc_field.send_keys(card_cvc)
-        driver.switch_to.default_content()
-        logging.info("✅ CVC saisi")
-
-        # Submit payment
-        submit_btn = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.ID, "cs-stripe-elements-submit-button"))
-        )
-        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", submit_btn)
-        time.sleep(0.5)
-        submit_btn.click()
-        logging.info("✅ Paiement soumis")
 
         # Wait for confirmation
         try:
             WebDriverWait(driver, 30).until(
-                lambda d: "confirmation" in d.current_url.lower() or "success" in d.current_url.lower()
+                lambda d: "confirmation" in d.current_url.lower() or "success" in d.current_url.lower() or "booking" in d.title.lower()
             )
             take_screenshot("confirmation")
             logging.info("🎉 RÉSERVATION CONFIRMÉE!")
@@ -354,12 +405,13 @@ def handle_stripe_payment():
             # Check for any success indicators on page
             time.sleep(5)
             page_source = driver.page_source.lower()
-            if any(word in page_source for word in ["confirmed", "success", "booked", "reserved", "confirmation"]):
+            if any(word in page_source for word in ["confirmed", "success", "booked", "reserved", "confirmation", "thank you"]):
                 logging.info("🎉 RÉSERVATION PROBABLEMENT CONFIRMÉE!")
                 take_screenshot("probable_success")
                 return True
             else:
                 logging.error("❌ Pas de confirmation trouvée")
+                take_screenshot("no_confirmation")
                 return False
 
     except Exception as e:
