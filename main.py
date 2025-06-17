@@ -83,6 +83,7 @@ def take_screenshot(name):
 
 def login_first(username, password):
     try:
+        # Check if already logged in
         current_page = driver.page_source
         if "My bookings" in current_page or "Log out" in current_page:
             logging.info("✅ Déjà connecté!")
@@ -90,18 +91,31 @@ def login_first(username, password):
 
         logging.info("🔐 Processus de connexion...")
 
+        # Step 1: Click Sign in
         try:
-            sign_in_link = WebDriverWait(driver, 15).until(
+            sign_in_link = WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Sign in') or contains(@href, 'login')]"))
             )
             sign_in_link.click()
             logging.info("✅ Cliqué sur Sign in")
-            time.sleep(2)
+            time.sleep(1)
         except Exception as e:
             logging.warning(f"Sign in non trouvé: {e}")
 
+        # Step 2: Click Login button
         try:
-            username_field = WebDriverWait(driver, 15).until(
+            login_btn = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Login') or contains(text(), 'Log in')]"))
+            )
+            login_btn.click()
+            logging.info("✅ Cliqué sur Login")
+            time.sleep(1)
+        except Exception as e:
+            logging.warning(f"Login button non trouvé: {e}")
+
+        # Step 3: Fill credentials
+        try:
+            username_field = WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Username' or @name='username' or @id='username']"))
             )
             username_field.clear()
@@ -117,19 +131,18 @@ def login_first(username, password):
             submit_btn = driver.find_element(By.XPATH, "//button[contains(text(), 'Log in') or contains(text(), 'Login') or @type='submit']")
             submit_btn.click()
             logging.info("✅ Login soumis")
+
             time.sleep(2)
             return True
 
         except Exception as e:
             logging.error(f"Erreur saisie credentials: {e}")
-            take_screenshot("login_error")
             return False
 
     except Exception as e:
         logging.error(f"❌ Erreur login: {e}")
         take_screenshot("login_error")
         return False
-
 def wait_for_page_load():
     try:
         WebDriverWait(driver, 5).until(
