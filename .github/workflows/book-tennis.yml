@@ -80,3 +80,9 @@ jobs:
           name: booking-log
           path: booking.log
           if-no-files-found: ignore
+      - name: Upload screenshots as artifacts
+        if: always()  # Upload even if the script fails
+        uses: actions/upload-artifact@v3
+        with:
+          name: booking-screenshots
+          path: screenshot_*.png
