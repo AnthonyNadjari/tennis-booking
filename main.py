@@ -54,52 +54,113 @@ def take_screenshot(driver, name):
 
 def login_first(driver, username, password):
     try:
-        current_page = driver.page_source
-        if "My bookings" in current_page or "Log out" in current_page:
+        # Check if already logged in
+        page = driver.page_source
+        if "My bookings" in page or "Log out" in page:
             logging.info("✅ Already logged in!")
             return True
 
-        logging.info("🔐 Logging in...")
+        logging.info("🔐 Attempting login...")
 
+        # Try to find any sign in link or button
+        sign_in = None
+        for xpath in [
+            "//a[contains(text(), 'Sign in') or contains(@href, 'login')]",
+            "//button[contains(text(), 'Sign in')]"
+        ]:
+            try:
+                sign_in = WebDriverWait(driver, 6).until(
+                    EC.element_to_be_clickable((By.XPATH, xpath))
+                )
+                sign_in.click()
+                logging.info("✅ Clicked Sign in")
+                time.sleep(1)
+                break
+            except Exception:
+                continue
+
+        # Wait for login fields to be visible
         try:
-            sign_in_link = WebDriverWait(driver, 6).until(
-                EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Sign in') or contains(@href, 'login')]"))
+            username_field = WebDriverWait(driver, 8).until(
+                EC.presence_of_element_located((
+                    By.XPATH,
+                    "//input[contains(@placeholder, 'Username') or @name='username' or @id='username']"
+                ))
             )
-            sign_in_link.click()
-            logging.info("✅ Clicked Sign in")
+            logging.info("✅ Username field appeared")
         except Exception as e:
-            logging.warning(f"Sign in not found: {e}")
+            logging.error("❌ Username field not found!")
+            take_screenshot(driver, "login_no_username")
+            # Dump form HTML for debug
+            html = driver.find_element(By.TAG_NAME, "body").get_attribute("innerHTML")
+            logging.error("Login area HTML snippet:\n" + html[:2000])
+            return False
 
+        # Find password field
         try:
-            username_field = WebDriverWait(driver, 6).until(
-                EC.visibility_of_element_located((By.XPATH, "//input[@placeholder='Username' or @name='username' or @id='username']"))
+            password_field = driver.find_element(
+                By.XPATH,
+                "//input[contains(@placeholder, 'Password') or @name='password' or @id='password' or @type='password']"
             )
+        except Exception as e:
+            logging.error("❌ Password field not found!")
+            take_screenshot(driver, "login_no_password")
+            html = driver.find_element(By.TAG_NAME, "body").get_attribute("innerHTML")
+            logging.error("Login area HTML snippet:\n" + html[:2000])
+            return False
+
+        # Enter credentials and submit
+        try:
             username_field.clear()
             username_field.send_keys(username)
-            logging.info("✅ Username entered")
-
-            password_field = WebDriverWait(driver, 6).until(
-                EC.visibility_of_element_located((By.XPATH, "//input[@placeholder='Password' or @name='password' or @id='password' or @type='password']"))
-            )
             password_field.clear()
             password_field.send_keys(password)
-            logging.info("✅ Password entered")
+            logging.info("✅ Entered credentials")
 
-            submit_btn = driver.find_element(By.XPATH, "//button[contains(text(), 'Log in') or contains(text(), 'Login') or @type='submit']")
-            submit_btn.click()
-            logging.info("✅ Login submitted")
-            time.sleep(1)
-            return True
+            # Find and click submit
+            submit_btn = None
+            for xpath in [
+                "//button[contains(text(), 'Log in')]",
+                "//button[contains(text(), 'Login')]",
+                "//button[@type='submit']"
+            ]:
+                try:
+                    submit_btn = driver.find_element(By.XPATH, xpath)
+                    break
+                except Exception:
+                    continue
+            if submit_btn:
+                submit_btn.click()
+                logging.info("✅ Clicked Login button.")
+            else:
+                logging.error("❌ Login/submit button not found!")
+                take_screenshot(driver, "login_no_submit")
+                return False
+
+            # Wait to be logged in or see error
+            time.sleep(2)
+            page_res = driver.page_source
+            if "My bookings" in page_res or "Log out" in page_res:
+                logging.info("✅ Successfully logged in!")
+                return True
+            elif "incorrect" in page_res.lower() or "invalid" in page_res.lower():
+                logging.error("❌ Login failed: Credentials incorrect?")
+                take_screenshot(driver, "login_bad_creds")
+                return False
+            else:
+                logging.warning("⚠️ Login may have failed (no confirmation text found).")
+                take_screenshot(driver, "login_unclear")
+                return False
+
         except Exception as e:
-            logging.error(f"Login field error: {e}")
-            take_screenshot(driver, "login_error")
+            logging.error(f"❌ Error during credential entry or submit: {e}")
+            take_screenshot(driver, "login_submit_error")
             return False
 
     except Exception as e:
-        logging.error(f"Login failed: {e}")
-        take_screenshot(driver, "login_error")
+        logging.error(f"❌ Unhandled login error: {e}")
+        take_screenshot(driver, "login_unhandled")
         return False
-
 def wait_for_page_load(driver):
     try:
         WebDriverWait(driver, 5).until(
