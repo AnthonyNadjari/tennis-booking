@@ -52,113 +52,63 @@ def take_screenshot(driver, name):
     except Exception as e:
         logging.error(f"Erreur screenshot: {e}")
 
-def login_first(driver, username, password):
+def login_first(username, password):
     try:
         # Check if already logged in
-        page = driver.page_source
-        if "My bookings" in page or "Log out" in page:
+        current_page = driver.page_source
+        if "My bookings" in current_page or "Log out" in current_page:
             logging.info("✅ Déjà connecté!")
             return True
 
         logging.info("🔐 Processus de connexion...")
 
-        # Try to find "Sign in" button or link
-        sign_in = None
-        for xpath in [
-            "//a[contains(text(), 'Sign in') or contains(@href, 'login')]",
-            "//button[contains(text(), 'Sign in')]"
-        ]:
-            try:
-                sign_in = WebDriverWait(driver, 6).until(
-                    EC.element_to_be_clickable((By.XPATH, xpath))
-                )
-                sign_in.click()
-                logging.info("✅ Cliqué sur Sign in")
-                time.sleep(1)
-                break
-            except Exception:
-                continue
-
-        # Wait for login fields to be visible
+        # Step 1: Click Sign in
         try:
-            username_field = WebDriverWait(driver, 8).until(
-                EC.presence_of_element_located((
-                    By.XPATH,
-                    "//input[contains(@placeholder, 'Username') or @name='username' or @id='username']"
-                ))
+            sign_in_link = WebDriverWait(driver, 15).until(
+                EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Sign in') or contains(@href, 'login')]"))
             )
-            logging.info("✅ Zone username trouvée")
+            sign_in_link.click()
+            logging.info("✅ Cliqué sur Sign in")
+            time.sleep(2)  # Give time for modal to appear
         except Exception as e:
-            logging.error("❌ Zone username non trouvée!")
-            take_screenshot(driver, "login_no_username")
-            html = driver.find_element(By.TAG_NAME, "body").get_attribute("innerHTML")
-            logging.error("Zone login HTML snippet:\n" + html[:2000])
-            return False
+            logging.warning(f"Sign in non trouvé: {e}")
 
+        # Step 2: Wait for the login modal/fields to show up
         try:
-            password_field = driver.find_element(
-                By.XPATH,
-                "//input[contains(@placeholder, 'Password') or @name='password' or @id='password' or @type='password']"
+            username_field = WebDriverWait(driver, 15).until(
+                EC.visibility_of_element_located((By.XPATH, "//input[@placeholder='Username' or @name='username' or @id='username']"))
             )
-        except Exception as e:
-            logging.error("❌ Zone password non trouvée!")
-            take_screenshot(driver, "login_no_password")
-            html = driver.find_element(By.TAG_NAME, "body").get_attribute("innerHTML")
-            logging.error("Zone login HTML snippet:\n" + html[:2000])
-            return False
-
-        try:
+            time.sleep(0.5)
             username_field.clear()
             username_field.send_keys(username)
+            logging.info("✅ Username saisi")
+
+            password_field = WebDriverWait(driver, 10).until(
+                EC.visibility_of_element_located((By.XPATH, "//input[@placeholder='Password' or @name='password' or @id='password' or @type='password']"))
+            )
+            time.sleep(0.3)
             password_field.clear()
             password_field.send_keys(password)
-            logging.info("✅ Credentials saisis")
+            logging.info("✅ Password saisi")
 
-            # Find and click submit
-            submit_btn = None
-            for xpath in [
-                "//button[contains(text(), 'Log in')]",
-                "//button[contains(text(), 'Login')]",
-                "//button[@type='submit']"
-            ]:
-                try:
-                    submit_btn = driver.find_element(By.XPATH, xpath)
-                    break
-                except Exception:
-                    continue
-            if submit_btn:
-                submit_btn.click()
-                logging.info("✅ Login soumis")
-            else:
-                logging.error("❌ Bouton Login non trouvé!")
-                take_screenshot(driver, "login_no_submit")
-                return False
-
-            # Wait for login result
+            # Submit login
+            submit_btn = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Log in') or contains(text(), 'Login') or @type='submit']"))
+            )
+            submit_btn.click()
+            logging.info("✅ Login soumis")
             time.sleep(2)
-            page_res = driver.page_source
-            if "My bookings" in page_res or "Log out" in page_res:
-                logging.info("✅ Login réussi!")
-                return True
-            elif "incorrect" in page_res.lower() or "invalid" in page_res.lower():
-                logging.error("❌ Login échoué: Credentials incorrects?")
-                take_screenshot(driver, "login_bad_creds")
-                return False
-            else:
-                logging.warning("⚠️ Login incertain (pas de confirmation trouvée).")
-                take_screenshot(driver, "login_unclear")
-                return False
+            return True
 
         except Exception as e:
-            logging.error(f"❌ Erreur lors de la saisie ou du submit: {e}")
-            take_screenshot(driver, "login_submit_error")
+            logging.error(f"Erreur saisie credentials: {e}")
+            take_screenshot("login_error")
             return False
 
     except Exception as e:
-        logging.error(f"❌ Erreur login non gérée: {e}")
-        take_screenshot(driver, "login_unhandled")
+        logging.error(f"❌ Erreur login: {e}")
+        take_screenshot("login_error")
         return False
-
 def wait_for_page_load(driver):
     try:
         WebDriverWait(driver, 5).until(
