@@ -209,56 +209,76 @@ def find_and_book_slot():
 
 def complete_booking_process():
     try:
-        time.sleep(0.3)
+        time.sleep(1.5)  # Wait for booking modal to fully load
         
         # Select duration
         try:
-            select2_dropdown = driver.find_element(By.CSS_SELECTOR, ".select2-selection, .select2-selection--single")
+            select2_dropdown = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, ".select2-selection, .select2-selection--single"))
+            )
             select2_dropdown.click()
-            time.sleep(0.2)
-            options = driver.find_elements(By.CSS_SELECTOR, ".select2-results__option")
+            time.sleep(0.5)  # Wait for dropdown to open
+
+            options = WebDriverWait(driver, 10).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".select2-results__option"))
+            )
             if len(options) >= 2:
                 options[1].click()
                 logging.info("✅ Durée sélectionnée")
         except:
             try:
-                duration_select = driver.find_element(By.ID, "booking-duration")
+                duration_select = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.ID, "booking-duration"))
+                )
                 Select(duration_select).select_by_index(1)
                 logging.info("✅ Durée sélectionnée")
             except:
                 pass
 
-        # Click Continue
+        time.sleep(1)  # Wait for duration selection to process
+
+        # Click Continue with proper wait
         try:
-            continue_btn = driver.find_element(By.XPATH, "//button[contains(text(), 'Continue')]")
+            continue_btn = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Continue')]"))
+            )
             continue_btn.click()
             logging.info("✅ Continue cliqué")
+            time.sleep(2)  # Important: wait for payment page to load
         except:
             try:
-                continue_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
+                continue_btn = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[@type='submit']"))
+                )
                 continue_btn.click()
                 logging.info("✅ Continue cliqué (submit)")
+                time.sleep(2)  # Important: wait for payment page to load
             except:
                 logging.error("❌ Bouton Continue non trouvé")
                 return False
 
-        # Click Pay Now
+        # Wait explicitly for Pay Now button with longer timeout
         try:
-            pay_btn = WebDriverWait(driver, 3).until(
+            pay_btn = WebDriverWait(driver, 15).until(
                 EC.element_to_be_clickable((By.ID, "paynow"))
             )
+            # Scroll to button and ensure it's visible
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", pay_btn)
+            time.sleep(0.5)  # Let the scroll complete
             pay_btn.click()
             logging.info("✅ Pay Now cliqué")
-        except:
-            logging.error("❌ Bouton Pay Now non trouvé")
+            time.sleep(1)
+        except Exception as e:
+            logging.error(f"❌ Bouton Pay Now non trouvé: {str(e)}")
+            take_screenshot("pay_now_missing")
             return False
 
         return handle_stripe_payment()
 
     except Exception as e:
         logging.error(f"❌ Erreur booking: {e}")
+        take_screenshot("booking_error")
         return False
-
 def handle_stripe_payment():
     try:
         logging.info("💳 Traitement paiement Stripe...")
