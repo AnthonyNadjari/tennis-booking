@@ -25,27 +25,28 @@ logging.basicConfig(
     ]
 )
 
-# Configuration Chrome - OPTIMIZED FOR SPEED
+# Configuration Chrome - OPTIMIZED FOR SPEED AND STRIPE COMPATIBILITY
 def get_chrome_options():
     options = webdriver.ChromeOptions()
-    options.add_argument("--headless")
+    # REMOVED --headless for better Stripe compatibility
+    options.add_argument("--window-size=1920,1080")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--disable-extensions")
     options.add_argument("--disable-plugins")
-    options.add_argument("--disable-images")  # Don't load images for speed
-    options.add_argument("--disable-javascript")  # Will re-enable when needed
+    # REMOVED --disable-javascript for Stripe compatibility
     options.add_argument("--aggressive-cache-discard")
     options.add_argument("--memory-pressure-off")
     options.add_argument("--max_old_space_size=4096")
+    # Better automation detection evasion
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option('useAutomationExtension', False)
-    # Disable CSS/JS for faster loading where possible
+    # Optimize but keep essential features for payment processing
     prefs = {
-        "profile.managed_default_content_settings.images": 2,
-        "profile.default_content_setting_values.notifications": 2
+        "profile.default_content_setting_values.notifications": 2,
+        "profile.default_content_settings.popups": 0,
+        "profile.managed_default_content_settings.images": 2  # Still disable images for speed
     }
     options.add_experimental_option("prefs", prefs)
     return options
@@ -90,8 +91,13 @@ def create_driver():
     try:
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=get_chrome_options())
         driver.set_window_size(1920, 1080)
-        # Enable JavaScript for booking interactions
+        
+        # Enhanced stealth mode for better compatibility
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        driver.execute_script("Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]})")
+        driver.execute_script("Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']})")
+        driver.execute_script("window.chrome = {runtime: {}}")
+        
         return driver
     except Exception as e:
         logging.error(f"❌ Erreur driver: {e}")
@@ -347,66 +353,187 @@ class FastBookingThread(threading.Thread):
     def handle_stripe_ultra_fast(self):
         try:
             logging.info(f"💳 Thread {self.thread_id}: ULTRA FAST Stripe payment")
+            take_screenshot(self.driver, f"stripe_start_thread_{self.thread_id}")
             
-            # Wait for Stripe iframes - REDUCED TIMEOUT
-            iframes = WebDriverWait(self.driver, 5).until(
-                EC.presence_of_all_elements_located((By.CSS_SELECTOR, "iframe[name^='__privateStripeFrame']"))
-            )
+            # Wait for Stripe iframes with multiple strategies
+            iframes = []
+            for attempt in range(3):
+                try:
+                    iframes = WebDriverWait(self.driver, 5).until(
+                        EC.presence_of_all_elements_located((By.CSS_SELECTOR, "iframe[name^='__privateStripeFrame']"))
+                    )
+                    if len(iframes) >= 3:
+                        break
+                    time.sleep(1)
+                except:
+                    time.sleep(1)
             
             if len(iframes) < 3:
+                logging.error(f"❌ Thread {self.thread_id}: Only {len(iframes)} Stripe iframes found")
                 return False
             
-            # PARALLEL FORM FILLING using JavaScript execution
-            # This is much faster than switching frames
+            logging.info(f"✅ Thread {self.thread_id}: Found {len(iframes)} Stripe iframes")
             
-            # Card number
-            self.driver.switch_to.frame(iframes[0])
-            card_field = WebDriverWait(self.driver, 3).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "input"))
-            )
-            # SPEED: Send all keys at once
-            card_field.send_keys(card_number)
-            self.driver.switch_to.default_content()
+            # ENHANCED: Use ActionChains and better element waiting
+            action = ActionChains(self.driver)
             
-            # Expiry - IMMEDIATE
-            self.driver.switch_to.frame(iframes[1])
-            expiry_field = WebDriverWait(self.driver, 3).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "input"))
-            )
-            expiry_field.send_keys(card_expiry)
-            self.driver.switch_to.default_content()
-            
-            # CVC - IMMEDIATE
-            self.driver.switch_to.frame(iframes[2])
-            cvc_field = WebDriverWait(self.driver, 3).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "input"))
-            )
-            cvc_field.send_keys(card_cvc)
-            self.driver.switch_to.default_content()
-            
-            # INSTANT SUBMIT
-            submit_btn = WebDriverWait(self.driver, 3).until(
-                EC.presence_of_element_located((By.ID, "cs-stripe-elements-submit-button"))
-            )
-            self.driver.execute_script("arguments[0].click();", submit_btn)
-            
-            # Wait for confirmation - COMPETITIVE TIMEOUT
+            # Card Number Field - ENHANCED INTERACTION
             try:
-                WebDriverWait(self.driver, 15).until(
-                    lambda d: any(word in d.current_url.lower() for word in ["confirmation", "success"])
+                self.driver.switch_to.frame(iframes[0])
+                card_field = WebDriverWait(self.driver, 8).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "input[name='cardnumber'], input[placeholder*='card'], input[data-elements-stable-field-name='cardNumber'], input"))
                 )
-                take_screenshot(self.driver, f"success_thread_{self.thread_id}")
-                return True
-            except:
-                # Quick page check
-                time.sleep(2)
-                page_source = self.driver.page_source.lower()
-                if any(word in page_source for word in ["confirmed", "success", "booked", "reserved"]):
-                    return True
+                
+                # Multiple interaction methods
+                self.driver.execute_script("arguments[0].focus();", card_field)
+                card_field.clear()
+                card_field.click()
+                time.sleep(0.2)
+                card_field.send_keys(card_number)
+                
+                # Verify input
+                entered_value = card_field.get_attribute('value')
+                logging.info(f"✅ Thread {self.thread_id}: Card number entered: {len(entered_value)} chars")
+                
+                self.driver.switch_to.default_content()
+            except Exception as e:
+                logging.error(f"❌ Thread {self.thread_id}: Card number error: {e}")
+                self.driver.switch_to.default_content()
                 return False
+            
+            # Expiry Date Field - ENHANCED INTERACTION
+            try:
+                self.driver.switch_to.frame(iframes[1])
+                expiry_field = WebDriverWait(self.driver, 8).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "input[name='exp-date'], input[placeholder*='MM'], input[data-elements-stable-field-name='cardExpiry'], input"))
+                )
+                
+                self.driver.execute_script("arguments[0].focus();", expiry_field)
+                expiry_field.clear()
+                expiry_field.click()
+                time.sleep(0.2)
+                expiry_field.send_keys(card_expiry)
+                
+                entered_value = expiry_field.get_attribute('value')
+                logging.info(f"✅ Thread {self.thread_id}: Expiry entered: {entered_value}")
+                
+                self.driver.switch_to.default_content()
+            except Exception as e:
+                logging.error(f"❌ Thread {self.thread_id}: Expiry error: {e}")
+                self.driver.switch_to.default_content()
+                return False
+            
+            # CVC Field - ENHANCED INTERACTION
+            try:
+                self.driver.switch_to.frame(iframes[2])
+                cvc_field = WebDriverWait(self.driver, 8).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "input[name='cvc'], input[placeholder*='CVC'], input[data-elements-stable-field-name='cardCvc'], input"))
+                )
+                
+                self.driver.execute_script("arguments[0].focus();", cvc_field)
+                cvc_field.clear()
+                cvc_field.click()
+                time.sleep(0.2)
+                cvc_field.send_keys(card_cvc)
+                
+                entered_value = cvc_field.get_attribute('value')
+                logging.info(f"✅ Thread {self.thread_id}: CVC entered: {len(entered_value)} chars")
+                
+                self.driver.switch_to.default_content()
+            except Exception as e:
+                logging.error(f"❌ Thread {self.thread_id}: CVC error: {e}")
+                self.driver.switch_to.default_content()
+                return False
+            
+            # Small wait for form validation
+            time.sleep(0.5)
+            
+            # SUBMIT PAYMENT - MULTIPLE STRATEGIES
+            submit_success = False
+            submit_selectors = [
+                "#cs-stripe-elements-submit-button",
+                "button[type='submit']",
+                ".SubmitButton",
+                "button:contains('Pay')",
+                "input[type='submit']"
+            ]
+            
+            for selector in submit_selectors:
+                try:
+                    if selector.startswith("#"):
+                        submit_btn = WebDriverWait(self.driver, 3).until(
+                            EC.element_to_be_clickable((By.ID, selector[1:]))
+                        )
+                    else:
+                        submit_btn = WebDriverWait(self.driver, 3).until(
+                            EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                        )
+                    
+                    # Multiple click strategies
+                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", submit_btn)
+                    time.sleep(0.2)
+                    
+                    # Try regular click first
+                    try:
+                        submit_btn.click()
+                    except:
+                        # Fallback to JavaScript click
+                        self.driver.execute_script("arguments[0].click();", submit_btn)
+                    
+                    logging.info(f"✅ Thread {self.thread_id}: Payment submitted using {selector}")
+                    submit_success = True
+                    break
+                    
+                except Exception as e:
+                    continue
+            
+            if not submit_success:
+                logging.error(f"❌ Thread {self.thread_id}: Could not find submit button")
+                take_screenshot(self.driver, f"no_submit_button_thread_{self.thread_id}")
+                return False
+            
+            # Wait for confirmation with enhanced checking
+            logging.info(f"⏳ Thread {self.thread_id}: Waiting for payment confirmation...")
+            
+            start_wait = time.time()
+            while time.time() - start_wait < 20:  # 20 second timeout
+                current_url = self.driver.current_url.lower()
+                page_source = self.driver.page_source.lower()
+                
+                # Check URL first (fastest)
+                if any(word in current_url for word in ["confirmation", "success", "complete", "thank"]):
+                    logging.info(f"🎉 Thread {self.thread_id}: SUCCESS via URL change!")
+                    take_screenshot(self.driver, f"success_thread_{self.thread_id}")
+                    return True
+                
+                # Check page content
+                if any(word in page_source for word in ["confirmed", "successful", "booked", "reserved", "thank you", "confirmation"]):
+                    logging.info(f"🎉 Thread {self.thread_id}: SUCCESS via page content!")
+                    take_screenshot(self.driver, f"success_content_thread_{self.thread_id}")
+                    return True
+                
+                # Check for error messages
+                if any(word in page_source for word in ["declined", "failed", "error", "invalid"]):
+                    logging.error(f"❌ Thread {self.thread_id}: Payment error detected")
+                    take_screenshot(self.driver, f"payment_error_thread_{self.thread_id}")
+                    return False
+                
+                time.sleep(0.5)
+            
+            # Final check after timeout
+            logging.warning(f"⚠️ Thread {self.thread_id}: Payment timeout - checking final state...")
+            take_screenshot(self.driver, f"timeout_check_thread_{self.thread_id}")
+            
+            page_source = self.driver.page_source.lower()
+            if any(word in page_source for word in ["confirmed", "successful", "booked", "reserved"]):
+                logging.info(f"🎉 Thread {self.thread_id}: SUCCESS after timeout check!")
+                return True
+            
+            return False
                 
         except Exception as e:
             logging.error(f"❌ Thread {self.thread_id} Stripe error: {e}")
+            take_screenshot(self.driver, f"stripe_error_thread_{self.thread_id}")
             return False
 
 def main():
