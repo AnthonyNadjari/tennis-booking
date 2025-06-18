@@ -331,57 +331,141 @@ def handle_stripe_ultra_fast():
             logging.error("❌ Sur la page de login au lieu de Stripe!")
             return False
         
+        # Wait a bit for the Stripe modal to fully appear
+        time.sleep(1)
+        
         take_screenshot("stripe_form")
         
-        # Wait for iframes
-        iframes = WebDriverWait(driver, 15).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "iframe[name^='__privateStripeFrame']"))
-        )
-        logging.info(f"✅ {len(iframes)} iframes Stripe trouvées")
+        # Look for the Stripe modal/popup first
+        try:
+            # Check if there's a Stripe modal visible
+            stripe_modal = driver.find_element(By.CSS_SELECTOR, ".StripeElement, [class*='stripe'], #stripe-modal, .payment-modal")
+            logging.info("✅ Modal Stripe détecté")
+        except:
+            logging.info("⚠️ Pas de modal Stripe détecté, continuation...")
+        
+        # Wait for iframes with better error handling
+        try:
+            iframes = WebDriverWait(driver, 15).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, "iframe[name^='__privateStripeFrame']"))
+            )
+            logging.info(f"✅ {len(iframes)} iframes Stripe trouvées")
+        except TimeoutException:
+            logging.error("❌ Timeout en attendant les iframes Stripe")
+            # Try alternative iframe selectors
+            iframes = driver.find_elements(By.CSS_SELECTOR, "iframe[src*='stripe'], iframe[title*='Secure']")
+            if not iframes:
+                return False
         
         if len(iframes) < 3:
-            logging.error("❌ Pas assez d'iframes Stripe")
+            logging.error(f"❌ Seulement {len(iframes)} iframes Stripe trouvées (3 attendues)")
+            # Log iframe details for debugging
+            for i, iframe in enumerate(iframes):
+                name = iframe.get_attribute('name')
+                src = iframe.get_attribute('src')
+                logging.debug(f"Iframe {i}: name={name}, src={src[:50]}...")
             return False
         
-        # Fill all fields as fast as possible
-        # Card number
-        driver.switch_to.frame(iframes[0])
-        card_field = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cardnumber'], input[placeholder*='card'], input[data-elements-stable-field-name='cardNumber'], input"))
-        )
-        card_field.clear()
-        card_field.send_keys(card_number)
-        driver.switch_to.default_content()
-        logging.info("✅ Numéro carte saisi")
+        # Wait for iframes to be ready
+        time.sleep(1)
         
-        # Expiry
-        driver.switch_to.frame(iframes[1])
-        expiry_field = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='exp-date'], input[placeholder*='MM'], input[data-elements-stable-field-name='cardExpiry'], input"))
-        )
-        expiry_field.clear()
-        expiry_field.send_keys(card_expiry)
-        driver.switch_to.default_content()
-        logging.info("✅ Date expiration saisie")
+        # Fill all fields with proper waits for interactability
+        try:
+            # Card number
+            driver.switch_to.frame(iframes[0])
+            card_field = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "input[name='cardnumber'], input[placeholder*='card'], input[data-elements-stable-field-name='cardNumber'], input"))
+            )
+            # Click to focus first
+            card_field.click()
+            time.sleep(0.2)
+            card_field.clear()
+            card_field.send_keys(card_number)
+            driver.switch_to.default_content()
+            logging.info("✅ Numéro carte saisi")
+            
+            # Small delay between fields
+            time.sleep(0.3)
+            
+            # Expiry
+            driver.switch_to.frame(iframes[1])
+            expiry_field = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "input[name='exp-date'], input[placeholder*='MM'], input[data-elements-stable-field-name='cardExpiry'], input"))
+            )
+            expiry_field.click()
+            time.sleep(0.2)
+            expiry_field.clear()
+            expiry_field.send_keys(card_expiry)
+            driver.switch_to.default_content()
+            logging.info("✅ Date expiration saisie")
+            
+            # Small delay
+            time.sleep(0.3)
+            
+            # CVC
+            driver.switch_to.frame(iframes[2])
+            cvc_field = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "input[name='cvc'], input[placeholder*='CVC'], input[data-elements-stable-field-name='cardCvc'], input"))
+            )
+            cvc_field.click()
+            time.sleep(0.2)
+            cvc_field.clear()
+            cvc_field.send_keys(card_cvc)
+            driver.switch_to.default_content()
+            logging.info("✅ CVC saisi")
+            
+        except Exception as e:
+            driver.switch_to.default_content()  # Make sure we're out of any iframe
+            logging.error(f"❌ Erreur lors du remplissage des champs: {e}")
+            
+            # Alternative approach - try JavaScript execution
+            try:
+                logging.info("🔄 Tentative avec JavaScript...")
+                
+                # Card number
+                driver.switch_to.frame(iframes[0])
+                driver.execute_script("arguments[0].focus(); arguments[0].value = arguments[1];", 
+                                    driver.find_element(By.CSS_SELECTOR, "input"), card_number)
+                driver.switch_to.default_content()
+                
+                # Expiry
+                driver.switch_to.frame(iframes[1])
+                driver.execute_script("arguments[0].focus(); arguments[0].value = arguments[1];", 
+                                    driver.find_element(By.CSS_SELECTOR, "input"), card_expiry)
+                driver.switch_to.default_content()
+                
+                # CVC
+                driver.switch_to.frame(iframes[2])
+                driver.execute_script("arguments[0].focus(); arguments[0].value = arguments[1];", 
+                                    driver.find_element(By.CSS_SELECTOR, "input"), card_cvc)
+                driver.switch_to.default_content()
+                
+                logging.info("✅ Champs remplis avec JavaScript")
+            except:
+                return False
         
-        # CVC
-        driver.switch_to.frame(iframes[2])
-        cvc_field = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cvc'], input[placeholder*='CVC'], input[data-elements-stable-field-name='cardCvc'], input"))
-        )
-        cvc_field.clear()
-        cvc_field.send_keys(card_cvc)
-        driver.switch_to.default_content()
-        logging.info("✅ CVC saisi")
-        
-        # Submit payment
-        submit_btn = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.ID, "cs-stripe-elements-submit-button"))
-        )
-        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", submit_btn)
+        # Wait before submitting
         time.sleep(0.5)
-        submit_btn.click()
-        logging.info("✅ Paiement soumis")
+        
+        # Submit payment - look for the actual Pay button in the modal
+        try:
+            # First try the button in the modal/popup
+            pay_button = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Pay £9.90') or contains(text(), 'Pay')]"))
+            )
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", pay_button)
+            time.sleep(0.3)
+            pay_button.click()
+            logging.info("✅ Bouton Pay cliqué")
+        except:
+            # Fallback to the original submit button
+            try:
+                submit_btn = driver.find_element(By.ID, "cs-stripe-elements-submit-button")
+                driver.execute_script("arguments[0].click();", submit_btn)
+                logging.info("✅ Paiement soumis (fallback)")
+            except:
+                logging.error("❌ Impossible de trouver le bouton de paiement")
+                return False
         
         # Wait for confirmation
         try:
@@ -406,6 +490,11 @@ def handle_stripe_ultra_fast():
     except Exception as e:
         logging.error(f"❌ Erreur paiement Stripe: {e}")
         take_screenshot("stripe_error")
+        # Make sure we're back to default content
+        try:
+            driver.switch_to.default_content()
+        except:
+            pass
         return False
 
 # Main execution - ULTRA FAST MODE
