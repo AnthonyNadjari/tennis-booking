@@ -398,7 +398,14 @@ async def main():
         logging.error(f"❌ Critical error: {e}")
         return False
     finally:
-        await booker.cleanup()
+        try:
+            if booker.context:
+                await booker.context.close()
+            if booker.browser:
+                await booker.browser.close()
+        except:
+            pass
+
 
 
 # Run the booking
