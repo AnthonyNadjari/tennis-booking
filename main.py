@@ -92,49 +92,88 @@ def ensure_logged_in(username, password):
 
 def login_first(username, password):
     try:
+        logging.info("🔐 Starting full login process...")
+
+        # Navigate to main page first
         driver.get("https://clubspark.lta.org.uk/SouthwarkPark")
-        time.sleep(1)
+        time.sleep(2)
 
+        # Accept cookies if present
         try:
-            cookie_btn = driver.find_element(By.CLASS_NAME, "osano-cm-accept-all")
+            cookie_btn = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CLASS_NAME, "osano-cm-accept-all"))
+            )
             cookie_btn.click()
-        except:
-            pass
+            logging.info("✅ Cookies accepted")
+            time.sleep(1)
+        except Exception as e:
+            logging.warning(f"Cookie acceptance button not found: {e}")
 
+        # Step 1: Click Sign in
         try:
-            sign_in_link = WebDriverWait(driver, 5).until(
+            sign_in_link = WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Sign in') or contains(@href, 'login')]"))
             )
             sign_in_link.click()
-        except:
+            logging.info("✅ Clicked on Sign in")
+            time.sleep(2)
+        except Exception as e:
+            logging.warning(f"Sign in link not found: {e}")
+            # Try direct navigation to login
             driver.get("https://clubspark.lta.org.uk/SouthwarkPark/Account/Login")
+            time.sleep(2)
 
+        # Step 2: Click Login button if needed
         try:
-            username_field = WebDriverWait(driver, 5).until(
+            login_btn = WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Login') or contains(text(), 'Log in')]"))
+            )
+            login_btn.click()
+            logging.info("✅ Clicked on Login")
+            time.sleep(2)
+        except Exception as e:
+            logging.warning(f"Login button not found: {e}")
+
+        # Step 3: Fill credentials
+        try:
+            # Wait for form to be present
+            username_field = WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Username' or @name='username' or @id='username']"))
             )
             username_field.clear()
             username_field.send_keys(username)
+            logging.info("✅ Username entered")
 
             password_field = driver.find_element(By.XPATH, "//input[@placeholder='Password' or @name='password' or @id='password' or @type='password']")
             password_field.clear()
             password_field.send_keys(password)
+            logging.info("✅ Password entered")
 
+            # Submit login
             submit_btn = driver.find_element(By.XPATH, "//button[contains(text(), 'Log in') or contains(text(), 'Login') or @type='submit']")
             submit_btn.click()
-            time.sleep(2)
+            logging.info("✅ Login submitted")
 
+            # Wait for login to complete
+            time.sleep(3)
+
+            # Verify login succeeded
             if check_login_status():
                 logging.info("✅ Login confirmed!")
+                # Save cookies
+                cookies = driver.get_cookies()
+                logging.info(f"🍪 {len(cookies)} cookies saved")
                 return True
             else:
                 logging.error("❌ Login not confirmed")
                 take_screenshot("login_failed")
                 return False
+
         except Exception as e:
             logging.error(f"Error entering credentials: {e}")
             take_screenshot("login_error")
             return False
+
     except Exception as e:
         logging.error(f"❌ Login error: {e}")
         take_screenshot("login_error")
