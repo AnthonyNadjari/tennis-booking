@@ -260,7 +260,7 @@ async def main():
             return False
 
         # Navigate to booking page
-        booking_url = f"{https://clubspark.lta.org.uk/SouthwarkPark/Booking/BookByDate#?date={date}&role=member"}
+        booking_url = f"https://clubspark.lta.org.uk/SouthwarkPark/Booking/BookByDate#?date={date}&role=member"
         await booker.page.goto(booking_url, wait_until='domcontentloaded')
 
         # Booking loop
