@@ -41,6 +41,14 @@ TIME_STR = f"{BOOKING_HOUR:02d}:{BOOKING_MINUTES:02d}"
 logging.info(f"🎾 Booking for {BOOKING_DATE} at {TIME_STR}")
 logging.info(f"👤 Account: {ACCOUNT}")
 
+
+
+###################### 2
+
+
+
+
+
 async def install_browsers():
     """Install Playwright browsers if needed"""
     try:
@@ -80,33 +88,193 @@ async def accept_cookies(page):
         pass
 
 
+async def debug_page_content(page, step_name):
+    """Debug function to see page content"""
+    try:
+        content = await page.content()
+        with open(f"debug_{step_name}.html", "w", encoding="utf-8") as f:
+            f.write(content)
+        logging.info(f"📄 Page content saved to debug_{step_name}.html")
+
+        # Also log the current URL
+        current_url = page.url
+        logging.info(f"🔗 Current URL: {current_url}")
+
+    except Exception as e:
+        logging.error(f"Debug error: {e}")
+
+
+################# 3
+
 async def login(page):
-    """Login to the website"""
+    """Login to the website with improved error handling and debugging"""
     if await is_logged_in(page):
         logging.info("✅ Already logged in")
         return True
 
-    logging.info("🔐 Logging in...")
+    logging.info("🔐 Starting login process...")
 
     try:
-        await page.goto(BASE_URL, wait_until='networkidle')
+        # Navigate to main page
+        await page.goto(BASE_URL, wait_until='networkidle', timeout=30000)
+        await page.wait_for_timeout(2000)
         await accept_cookies(page)
 
-        await page.click("a:has-text('Sign in')", timeout=10000)
+        # DEBUG: Save page content after navigation
+        await debug_page_content(page, "after_navigation")
+        await take_screenshot(page, "before_login")
+
+        # Look for sign in link
+        sign_in_selectors = [
+            "a:has-text('Sign in')",
+            "a[href*='login']",
+            "a[href*='Login']",
+            ".login-link",
+            "#login-link"
+        ]
+
+        clicked_sign_in = False
+        for selector in sign_in_selectors:
+            try:
+                await page.click(selector, timeout=3000)
+                logging.info(f"✅ Clicked sign in with selector: {selector}")
+                clicked_sign_in = True
+                break
+            except:
+                continue
+
+        if not clicked_sign_in:
+            logging.error("❌ Could not find sign in link")
+            # DEBUG: Save page content when sign in link not found
+            await debug_page_content(page, "no_signin_link")
+            await take_screenshot(page, "no_signin_link")
+            return False
+
+        await page.wait_for_timeout(3000)
+
+        # DEBUG: Save page content after clicking sign in
+        await debug_page_content(page, "after_signin_click")
+
+        # Try to click Login button if it exists
+        login_button_selectors = [
+            "button:has-text('Login')",
+            "input[type='submit'][value*='Login']",
+            ".login-button",
+            "#login-button"
+        ]
+
+        for selector in login_button_selectors:
+            try:
+                await page.click(selector, timeout=2000)
+                logging.info(f"✅ Clicked login button with selector: {selector}")
+                break
+            except:
+                continue
+
         await page.wait_for_timeout(2000)
 
-        try:
-            await page.click("button:has-text('Login')", timeout=3000)
-        except:
-            pass
+        # DEBUG: Save page content before filling credentials
+        await debug_page_content(page, "before_credentials")
 
-        await page.fill("input[name='username']", USERNAME)
-        await page.fill("input[name='password']", PASSWORD)
-        await page.click("button:has-text('Log in')")
-        await page.wait_for_timeout(5000)
+        # Fill username
+        username_selectors = [
+            "input[name='username']",
+            "input[name='email']",
+            "input[type='email']",
+            "input[id*='username']",
+            "input[id*='email']"
+        ]
 
+        filled_username = False
+        for selector in username_selectors:
+            try:
+                await page.fill(selector, USERNAME)
+                logging.info(f"✅ Filled username with selector: {selector}")
+                filled_username = True
+                break
+            except:
+                continue
+
+        if not filled_username:
+            logging.error("❌ Could not find username field")
+            # DEBUG: Save page content when username field not found
+            await debug_page_content(page, "no_username_field")
+            await take_screenshot(page, "no_username_field")
+            return False
+
+        # Fill password
+        password_selectors = [
+            "input[name='password']",
+            "input[type='password']",
+            "input[id*='password']"
+        ]
+
+        filled_password = False
+        for selector in password_selectors:
+            try:
+                await page.fill(selector, PASSWORD)
+                logging.info(f"✅ Filled password with selector: {selector}")
+                filled_password = True
+                break
+            except:
+                continue
+
+        if not filled_password:
+            logging.error("❌ Could not find password field")
+            # DEBUG: Save page content when password field not found
+            await debug_page_content(page, "no_password_field")
+            await take_screenshot(page, "no_password_field")
+            return False
+
+        # DEBUG: Save page content after filling credentials
+        await debug_page_content(page, "after_credentials")
+
+        # Submit login
+        submit_selectors = [
+            "button:has-text('Log in')",
+            "button:has-text('Login')",
+            "button:has-text('Sign in')",
+            "input[type='submit']",
+            "button[type='submit']",
+            ".login-submit",
+            "#login-submit"
+        ]
+
+        submitted = False
+        for selector in submit_selectors:
+            try:
+                await page.click(selector, timeout=3000)
+                logging.info(f"✅ Submitted login with selector: {selector}")
+                submitted = True
+                break
+            except:
+                continue
+
+        if not submitted:
+            try:
+                await page.press("input[name='password']", "Enter")
+                logging.info("✅ Submitted login with Enter key")
+                submitted = True
+            except:
+                pass
+
+        if not submitted:
+            logging.error("❌ Could not submit login form")
+            # DEBUG: Save page content when submit fails
+            await debug_page_content(page, "no_submit_button")
+            await take_screenshot(page, "no_submit_button")
+            return False
+
+        # Wait for login to complete
+        await page.wait_for_timeout(8000)
+
+        # DEBUG: Save page content after login attempt
+        await debug_page_content(page, "after_login_attempt")
+
+        # Check if login was successful
         if await is_logged_in(page):
-            logging.info("✅ Login successful")
+            logging.info("✅ Login successful!")
+            await take_screenshot(page, "login_success")
             return True
         else:
             logging.error("❌ Login failed")
@@ -115,8 +283,9 @@ async def login(page):
 
     except Exception as e:
         logging.error(f"❌ Login error: {e}")
-        await take_screenshot(page, "login_error")
+        await take_screenshot(page, "login_exception")
         return False
+
 
 
 async def find_available_slots(page):
@@ -191,6 +360,9 @@ async def book_slot(page):
         return False
 
 
+
+
+ ################ 5
 async def complete_booking(page):
     """Complete the booking process"""
     try:
@@ -279,6 +451,7 @@ async def handle_payment(page):
         await take_screenshot(page, "payment_error")
         return False
 
+######### 6
 
 async def main():
     """Main execution function"""
