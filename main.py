@@ -224,62 +224,121 @@ def find_and_book_slot():
 
 def complete_booking_process():
     try:
-        current_url = driver.current_url
-        if "login" in current_url.lower() or not check_login_status():
-            logging.error("❌ Redirected to login after slot selection!")
+        # Check if we're still logged in after clicking the slot
+        if not check_login_status():
+            logging.error("❌ Redirect to login after selecting slot!")
             return False
 
+        # Select duration
         try:
-            select2_dropdown = driver.find_element(By.CSS_SELECTOR, ".select2-selection, .select2-selection--single")
+            select2_dropdown = WebDriverWait(driver, 2).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, ".select2-selection, .select2-selection--single"))
+            )
             select2_dropdown.click()
-            options = driver.find_elements(By.CSS_SELECTOR, ".select2-results__option")
+
+            options = WebDriverWait(driver, 2).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".select2-results__option"))
+            )
             if len(options) >= 2:
                 options[1].click()
-        except:
-            try:
-                duration_select = driver.find_element(By.ID, "booking-duration")
-                Select(duration_select).select_by_index(1)
-            except:
-                pass
+        except Exception as e:
+            logging.warning(f"Could not select duration: {e}")
 
+        # Click Continue
         try:
-            continue_btn = driver.find_element(By.XPATH, "//button[contains(text(), 'Continue')]")
+            continue_btn = WebDriverWait(driver, 2).until(
+                EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Continue') or @type='submit']"))
+            )
             continue_btn.click()
-            time.sleep(1)
-        except:
-            try:
-                continue_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
-                continue_btn.click()
-                time.sleep(1)
-            except:
-                logging.error("❌ Continue button not found")
-                return False
+        except Exception as e:
+            logging.error(f"Continue button not found: {e}")
+            return False
 
-        current_url = driver.current_url
-        if "login" in current_url.lower():
-            logging.error("❌ Redirected to login after Continue!")
-            if login_first(username, password):
-                logging.info("✅ Re-connected successfully")
-                return False
-            else:
-                logging.error("❌ Unable to reconnect")
-                return False
+        # Check if we're still logged in after clicking Continue
+        if not check_login_status():
+            logging.error("❌ Redirect to login after Continue!")
+            return False
 
+        # Look for payment button
         try:
-            pay_btn = WebDriverWait(driver, 10).until(
+            pay_btn = WebDriverWait(driver, 5).until(
                 EC.element_to_be_clickable((By.ID, "paynow"))
             )
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", pay_btn)
             pay_btn.click()
-            time.sleep(1)
             return handle_stripe_payment()
         except TimeoutException:
             logging.error("❌ Payment button not found")
             return False
+
     except Exception as e:
         logging.error(f"❌ Booking error: {e}")
         return False
 
+def handle_stripe_payment():
+    try:
+        logging.info("💳 Handling Stripe payment...")
+
+        # Check if we're on the login page instead of Stripe
+        if "login" in driver.current_url.lower():
+            logging.error("❌ On login page instead of Stripe!")
+            return False
+
+        # Wait for Stripe iframes
+        iframes = WebDriverWait(driver, 5).until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "iframe[name^='__privateStripeFrame']"))
+        )
+        if len(iframes) < 3:
+            logging.error("❌ Not enough Stripe iframes")
+            return False
+
+        # Fill payment details
+        driver.switch_to.frame(iframes[0])
+        card_field = WebDriverWait(driver, 2).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cardnumber']"))
+        )
+        card_field.send_keys(card_number)
+        driver.switch_to.default_content()
+
+        driver.switch_to.frame(iframes[1])
+        expiry_field = WebDriverWait(driver, 2).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='exp-date']"))
+        )
+        expiry_field.send_keys(card_expiry)
+        driver.switch_to.default_content()
+
+        driver.switch_to.frame(iframes[2])
+        cvc_field = WebDriverWait(driver, 2).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cvc']"))
+        )
+        cvc_field.send_keys(card_cvc)
+        driver.switch_to.default_content()
+
+        # Submit payment
+        submit_btn = WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.ID, "cs-stripe-elements-submit-button"))
+        )
+        submit_btn.click()
+
+        # Wait for confirmation
+        try:
+            WebDriverWait(driver, 10).until(
+                lambda d: "confirmation" in d.current_url.lower() or "success" in d.current_url.lower()
+            )
+            logging.info("🎉 BOOKING CONFIRMED!")
+            return True
+        except TimeoutException:
+            page_source = driver.page_source.lower()
+            if any(word in page_source for word in ["confirmed", "success", "booked", "reserved", "confirmation"]):
+                logging.info("🎉 BOOKING PROBABLY CONFIRMED!")
+                return True
+            else:
+                logging.error("❌ No confirmation found")
+                return False
+
+    except Exception as e:
+        logging.error(f"❌ Stripe payment error: {e}")
+        return False
 def handle_stripe_payment():
     try:
         if "login" in driver.current_url.lower():
