@@ -1,15 +1,9 @@
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.support.ui import WebDriverWait, Select
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException, NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
-import time
+
 import os
 import logging
 from datetime import datetime
-
+from playwright.async_api import async_playwright
+import asyncio
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -19,17 +13,6 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-
-# Chrome configuration
-options = webdriver.ChromeOptions()
-options.add_argument("--headless")
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
-options.add_argument("--disable-gpu")
-options.add_argument("--disable-blink-features=AutomationControlled")
-options.add_experimental_option("excludeSwitches", ["enable-automation"])
-options.add_experimental_option('useAutomationExtension', False)
-options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
 # Environment variables
 account_number = os.environ.get('ACCOUNT', '1')
@@ -48,399 +31,272 @@ if not username or not password:
 
 total_minutes = (hour * 60) + minutes
 hour_system_minutes = total_minutes
-hour_str = f"{hour:02d}:{minutes:02d}"
+hour_str = f"{hour:02d }:{minutes:02d }"
 
-logging.info(f"🎾 Booking for {date} at {hour_str}")
-logging.info(f"⏰ System minutes: {hour_system_minutes}")
-logging.info(f"👤 Account: {account_number} ({'Primary' if account_number == '1' else 'Secondary'})")
+logging.info(f"🎾 Booking for {date } at {hour_str }")
+logging.info(f"⏰ System minutes: {hour_system_minutes }")
+logging.info(f"👤 Account: {account_number } ({'Primary' if account_number == '1' else 'Secondary' })")
 
-# Initialize driver
-driver = None
-
-try:
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    driver.set_window_size(1920, 1080)
-    logging.info("✅ Driver initialized")
-except Exception as e:
-    logging.error(f"❌ Driver error: {e}")
-    exit(1)
-
-def take_screenshot(name):
+async def take_screenshot(page, name):
     try:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"screenshot_{name}_{timestamp}.png"
-        driver.save_screenshot(filename)
-        logging.info(f"📸 Screenshot saved: {filename}")
+        filename = f"screenshot_{name }_{timestamp }.png"
+        await page.screenshot(path=filename)
+        logging.info(f"📸 Screenshot saved: {filename }")
     except Exception as e:
-        logging.error(f"Screenshot error: {e}")
+        logging.error(f"Screenshot error: {e }")
 
-def check_login_status():
+async def check_login_status(page):
     try:
-        page_source = driver.page_source
+        content = await page.content()
         logged_in_indicators = ["My bookings", "Log out", "Sign out", "My account", "Account settings"]
-        return any(indicator in page_source for indicator in logged_in_indicators)
+        return any(indicator in content for indicator in logged_in_indicators)
     except:
         return False
 
-def ensure_logged_in(username, password):
-    if check_login_status():
+async def ensure_logged_in(page, username, password):
+    if await check_login_status(page):
         logging.info("✅ Already logged in!")
         return True
 
     logging.info("🔐 Not logged in, attempting to log in...")
-    return login_first(username, password)
+    return await login_first(page, username, password)
 
-def login_first(username, password):
+async def login_first(page, username, password):
     try:
         logging.info("🔐 Starting full login process...")
 
         # Navigate to main page first
-        driver.get("https://clubspark.lta.org.uk/SouthwarkPark")
-        time.sleep(2)
+        await page.goto("{https://clubspark.lta.org.uk/SouthwarkPark"})
+        await page.wait_for_timeout(2000)
 
         # Accept cookies if present
         try:
-            cookie_btn = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.CLASS_NAME, "osano-cm-accept-all"))
-            )
-            cookie_btn.click()
+            await page.click(".osano-cm-accept-all")
             logging.info("✅ Cookies accepted")
-            time.sleep(1)
+            await page.wait_for_timeout(1000)
         except Exception as e:
-            logging.warning(f"Cookie acceptance button not found: {e}")
+            logging.warning(f"Cookie acceptance button not found: {e }")
 
         # Step 1: Click Sign in
         try:
-            sign_in_link = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Sign in') or contains(@href, 'login')]"))
-            )
-            sign_in_link.click()
+            await page.click("a:has-text('Sign in')")
             logging.info("✅ Clicked on Sign in")
-            time.sleep(2)
+            await page.wait_for_timeout(2000)
         except Exception as e:
-            logging.warning(f"Sign in link not found: {e}")
+            logging.warning(f"Sign in link not found: {e }")
             # Try direct navigation to login
-            driver.get("https://clubspark.lta.org.uk/SouthwarkPark/Account/Login")
-            time.sleep(2)
+            await page.goto("{https://clubspark.lta.org.uk/SouthwarkPark/Account/Login"})
+            await page.wait_for_timeout(2000)
 
         # Step 2: Click Login button if needed
         try:
-            login_btn = WebDriverWait(driver, 5).until(
-                EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Login') or contains(text(), 'Log in')]"))
-            )
-            login_btn.click()
+            await page.click("button:has-text('Login')")
             logging.info("✅ Clicked on Login")
-            time.sleep(2)
+            await page.wait_for_timeout(2000)
         except Exception as e:
-            logging.warning(f"Login button not found: {e}")
+            logging.warning(f"Login button not found: {e }")
 
         # Step 3: Fill credentials
         try:
-            # Wait for form to be present
-            username_field = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Username' or @name='username' or @id='username']"))
-            )
-            username_field.clear()
-            username_field.send_keys(username)
+            await page.fill("input[name='username']", username)
             logging.info("✅ Username entered")
 
-            password_field = driver.find_element(By.XPATH, "//input[@placeholder='Password' or @name='password' or @id='password' or @type='password']")
-            password_field.clear()
-            password_field.send_keys(password)
+            await page.fill("input[name='password']", password)
             logging.info("✅ Password entered")
 
             # Submit login
-            submit_btn = driver.find_element(By.XPATH, "//button[contains(text(), 'Log in') or contains(text(), 'Login') or @type='submit']")
-            submit_btn.click()
+            await page.click("button:has-text('Log in')")
             logging.info("✅ Login submitted")
 
             # Wait for login to complete
-            time.sleep(3)
+            await page.wait_for_timeout(3000)
 
             # Verify login succeeded
-            if check_login_status():
+            if await check_login_status(page):
                 logging.info("✅ Login confirmed!")
-                # Save cookies
-                cookies = driver.get_cookies()
-                logging.info(f"🍪 {len(cookies)} cookies saved")
                 return True
             else:
                 logging.error("❌ Login not confirmed")
-                take_screenshot("login_failed")
+                await take_screenshot(page, "login_failed")
                 return False
 
         except Exception as e:
-            logging.error(f"Error entering credentials: {e}")
-            take_screenshot("login_error")
+            logging.error(f"Error entering credentials: {e }")
+            await take_screenshot(page, "login_error")
             return False
 
     except Exception as e:
-        logging.error(f"❌ Login error: {e}")
-        take_screenshot("login_error")
+        logging.error(f"❌ Login error: {e }")
+        await take_screenshot(page, "login_error")
         return False
 
-def find_and_book_slot():
+async def find_and_book_slot(page):
     try:
-        if not check_login_status():
+        if not await check_login_status(page):
             logging.warning("⚠️ Session lost, need to reconnect")
             return False
 
         try:
-            cookie_btn = driver.find_element(By.CLASS_NAME, "osano-cm-accept-all")
-            cookie_btn.click()
+            await page.click(".osano-cm-accept-all")
         except:
             pass
 
         target_time_minutes = hour * 60 + minutes
-        xpath_query = f"//a[@class='book-interval not-booked' and contains(@data-test-id, '|{target_time_minutes}')]"
+        xpath_query = f"//a[@class='book-interval not-booked' and contains(@data-test-id, '|{target_time_minutes }')]"
 
         try:
-            target_slot = WebDriverWait(driver, 2).until(
-                EC.element_to_be_clickable((By.XPATH, xpath_query))
-            )
-            logging.info(f"🎯 SLOT FOUND DIRECTLY at {hour_str}!")
-            target_slot.click()
-            time.sleep(1)
-            return complete_booking_process()
-        except TimeoutException:
+            await page.click(f"xpath={xpath_query }")
+            logging.info(f"🎯 SLOT FOUND DIRECTLY at {hour_str }!")
+            await page.wait_for_timeout(1000)
+            return await complete_booking_process(page)
+        except:
             logging.info("⚠️ Direct search failed, using classic method...")
 
-            booking_links = driver.find_elements(By.CSS_SELECTOR, "a.book-interval.not-booked")
+            booking_links = await page.query_selector_all("a.book-interval.not-booked")
             for link in booking_links:
-                data_test_id = link.get_attribute('data-test-id') or ""
+                data_test_id = await link.get_attribute('data-test-id') or ""
                 if '|' in data_test_id:
                     parts = data_test_id.split('|')
                     if len(parts) >= 3 and int(parts[2]) == target_time_minutes:
-                        logging.info(f"🎯 SLOT FOUND at {hour_str}!")
-                        link.click()
-                        time.sleep(1)
-                        return complete_booking_process()
+                        logging.info(f"🎯 SLOT FOUND at {hour_str }!")
+                        await link.click()
+                        await page.wait_for_timeout(1000)
+                        return await complete_booking_process(page)
 
-        logging.warning(f"⚠️ No slot found for {hour_str}")
+        logging.warning(f"⚠️ No slot found for {hour_str }")
         return False
     except Exception as e:
-        logging.error(f"❌ Error: {e}")
+        logging.error(f"❌ Error: {e }")
         return False
 
-def complete_booking_process():
+async def complete_booking_process(page):
     try:
         # Check if we're still logged in after clicking the slot
-        if not check_login_status():
+        if not await check_login_status(page):
             logging.error("❌ Redirect to login after selecting slot!")
             return False
 
         # Select duration
         try:
-            select2_dropdown = WebDriverWait(driver, 2).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, ".select2-selection, .select2-selection--single"))
-            )
-            select2_dropdown.click()
-
-            options = WebDriverWait(driver, 2).until(
-                EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".select2-results__option"))
-            )
+            await page.click(".select2-selection--single")
+            options = await page.query_selector_all(".select2-results__option")
             if len(options) >= 2:
-                options[1].click()
+                await options[1].click()
         except Exception as e:
-            logging.warning(f"Could not select duration: {e}")
+            logging.warning(f"Could not select duration: {e }")
 
         # Click Continue
         try:
-            continue_btn = WebDriverWait(driver, 2).until(
-                EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Continue') or @type='submit']"))
-            )
-            continue_btn.click()
+            await page.click("button:has-text('Continue')")
         except Exception as e:
-            logging.error(f"Continue button not found: {e}")
+            logging.error(f"Continue button not found: {e }")
             return False
 
         # Check if we're still logged in after clicking Continue
-        if not check_login_status():
+        if not await check_login_status(page):
             logging.error("❌ Redirect to login after Continue!")
             return False
 
         # Look for payment button
         try:
-            pay_btn = WebDriverWait(driver, 5).until(
-                EC.element_to_be_clickable((By.ID, "paynow"))
-            )
-            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", pay_btn)
-            pay_btn.click()
-            return handle_stripe_payment()
-        except TimeoutException:
+            await page.click("#paynow")
+            return await handle_stripe_payment(page)
+        except:
             logging.error("❌ Payment button not found")
             return False
 
     except Exception as e:
-        logging.error(f"❌ Booking error: {e}")
+        logging.error(f"❌ Booking error: {e }")
         return False
 
-def handle_stripe_payment():
+async def handle_stripe_payment(page):
     try:
         logging.info("💳 Handling Stripe payment...")
 
         # Check if we're on the login page instead of Stripe
-        if "login" in driver.current_url.lower():
+        if "login" in page.url.lower():
             logging.error("❌ On login page instead of Stripe!")
             return False
 
         # Wait for Stripe iframes
-        iframes = WebDriverWait(driver, 5).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "iframe[name^='__privateStripeFrame']"))
-        )
+        iframes = await page.query_selector_all("iframe[name^='__privateStripeFrame']")
         if len(iframes) < 3:
             logging.error("❌ Not enough Stripe iframes")
             return False
 
         # Fill payment details
-        driver.switch_to.frame(iframes[0])
-        card_field = WebDriverWait(driver, 2).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cardnumber']"))
-        )
-        card_field.send_keys(card_number)
-        driver.switch_to.default_content()
-
-        driver.switch_to.frame(iframes[1])
-        expiry_field = WebDriverWait(driver, 2).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='exp-date']"))
-        )
-        expiry_field.send_keys(card_expiry)
-        driver.switch_to.default_content()
-
-        driver.switch_to.frame(iframes[2])
-        cvc_field = WebDriverWait(driver, 2).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cvc']"))
-        )
-        cvc_field.send_keys(card_cvc)
-        driver.switch_to.default_content()
+        await iframes[0].frame_locator("input[name='cardnumber']").fill(card_number)
+        await iframes[1].frame_locator("input[name='exp-date']").fill(card_expiry)
+        await iframes[2].frame_locator("input[name='cvc']").fill(card_cvc)
 
         # Submit payment
-        submit_btn = WebDriverWait(driver, 5).until(
-            EC.element_to_be_clickable((By.ID, "cs-stripe-elements-submit-button"))
-        )
-        submit_btn.click()
+        await page.click("#cs-stripe-elements-submit-button")
 
         # Wait for confirmation
         try:
-            WebDriverWait(driver, 10).until(
-                lambda d: "confirmation" in d.current_url.lower() or "success" in d.current_url.lower()
-            )
-            logging.info("🎉 BOOKING CONFIRMED!")
-            return True
-        except TimeoutException:
-            page_source = driver.page_source.lower()
-            if any(word in page_source for word in ["confirmed", "success", "booked", "reserved", "confirmation"]):
-                logging.info("🎉 BOOKING PROBABLY CONFIRMED!")
-                return True
-            else:
-                logging.error("❌ No confirmation found")
-                return False
-
-    except Exception as e:
-        logging.error(f"❌ Stripe payment error: {e}")
-        return False
-def handle_stripe_payment():
-    try:
-        if "login" in driver.current_url.lower():
-            logging.error("❌ On login page instead of Stripe!")
-            return False
-
-        iframes = WebDriverWait(driver, 10).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "iframe[name^='__privateStripeFrame']"))
-        )
-        if len(iframes) < 3:
-            logging.error("❌ Not enough Stripe iframes")
-            return False
-
-        driver.switch_to.frame(iframes[0])
-        card_field = WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cardnumber']"))
-        )
-        card_field.send_keys(card_number)
-        driver.switch_to.default_content()
-
-        driver.switch_to.frame(iframes[1])
-        expiry_field = WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='exp-date']"))
-        )
-        expiry_field.send_keys(card_expiry)
-        driver.switch_to.default_content()
-
-        driver.switch_to.frame(iframes[2])
-        cvc_field = WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='cvc']"))
-        )
-        cvc_field.send_keys(card_cvc)
-        driver.switch_to.default_content()
-
-        submit_btn = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.ID, "cs-stripe-elements-submit-button"))
-        )
-        submit_btn.click()
-
-        try:
-            WebDriverWait(driver, 20).until(
-                lambda d: "confirmation" in d.current_url.lower() or "success" in d.current_url.lower()
-            )
+            await page.wait_for_url("**/confirmation**", timeout=20000)
             logging.info("🎉 BOOKING CONFIRMED!")
             return True
         except:
-            page_source = driver.page_source.lower()
-            if any(word in page_source for word in ["confirmed", "success", "booked", "reserved", "confirmation"]):
+            content = await page.content()
+            if any(word in content.lower() for word in ["confirmed", "success", "booked", "reserved", "confirmation"]):
                 logging.info("🎉 BOOKING PROBABLY CONFIRMED!")
                 return True
             else:
                 logging.error("❌ No confirmation found")
                 return False
+
     except Exception as e:
-        logging.error(f"❌ Stripe payment error: {e}")
+        logging.error(f"❌ Stripe payment error: {e }")
         return False
 
-# Main execution
-try:
-    start_time = time.time()
-    max_duration = 300
+async def main():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
 
-    if not login_first(username, password):
-        logging.error("❌ Unable to log in!")
-        exit(1)
+        start_time = datetime.now()
+        max_duration = 300
 
-    booking_url = f"https://clubspark.lta.org.uk/SouthwarkPark/Booking/BookByDate#?date={date}&role=member"
-    driver.get(booking_url)
-    time.sleep(2)
+        if not await login_first(page, username, password):
+            logging.error("❌ Unable to log in!")
+            return
 
-    if not check_login_status():
-        logging.error("❌ Session lost after navigation!")
-        exit(1)
+        booking_url = f"{https://clubspark.lta.org.uk/SouthwarkPark/Booking/BookByDate#?date={date}&role=member"}
+        await page.goto(booking_url)
+        await page.wait_for_timeout(2000)
 
-    attempt = 0
-    max_attempts = 300
+        if not await check_login_status(page):
+            logging.error("❌ Session lost after navigation!")
+            return
 
-    while attempt < max_attempts and (time.time() - start_time) < max_duration:
-        attempt += 1
-        if attempt % 10 == 0 and not check_login_status():
-            if not login_first(username, password):
-                logging.error("❌ Reconnection failed!")
+        attempt = 0
+        max_attempts = 300
+
+        while attempt < max_attempts and (datetime.now() - start_time).seconds < max_duration:
+            attempt += 1
+            if attempt % 10 == 0 and not await check_login_status(page):
+                if not await login_first(page, username, password):
+                    logging.error("❌ Reconnection failed!")
+                    break
+                await page.goto(booking_url)
+                await page.wait_for_timeout(1000)
+
+            logging.info(f"🔄 Attempt {attempt}/{max_attempts} (time: {(datetime.now() - start_time).seconds}s)")
+
+            if await find_and_book_slot(page):
+                logging.info("🎉 BOOKING SUCCESSFUL!")
                 break
-            driver.get(booking_url)
-            time.sleep(1)
+            else:
+                await page.reload()
+                await page.wait_for_timeout(200)
 
-        logging.info(f"🔄 Attempt {attempt}/{max_attempts} (time: {int(time.time() - start_time)}s)")
+        logging.info(f"✅ Script finished after {(datetime.now() - start_time).seconds}s and {attempt} attempts")
 
-        if find_and_book_slot():
-            logging.info("🎉 BOOKING SUCCESSFUL!")
-            break
-        else:
-            driver.refresh()
-            time.sleep(0.2)
+        await browser.close()
 
-    logging.info(f"✅ Script finished after {int(time.time() - start_time)}s and {attempt} attempts")
-
-except Exception as e:
-    logging.error(f"❌ Critical error: {e}")
-    if driver:
-        take_screenshot("critical_error")
-finally:
-    if driver:
-        driver.quit()
-        logging.info("🏁 Driver closed")
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
