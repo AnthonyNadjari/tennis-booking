@@ -1,9 +1,9 @@
-
 import os
 import logging
 from datetime import datetime
 from playwright.async_api import async_playwright
 import asyncio
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -31,20 +31,22 @@ if not username or not password:
 
 total_minutes = (hour * 60) + minutes
 hour_system_minutes = total_minutes
-hour_str = f"{hour:02d }:{minutes:02d }"
+hour_str = f"{hour:02d}:{minutes:02d}"
 
-logging.info(f"🎾 Booking for {date } at {hour_str }")
-logging.info(f"⏰ System minutes: {hour_system_minutes }")
-logging.info(f"👤 Account: {account_number } ({'Primary' if account_number == '1' else 'Secondary' })")
+logging.info(f"🎾 Booking for {date} at {hour_str}")
+logging.info(f"⏰ System minutes: {hour_system_minutes}")
+logging.info(f"👤 Account: {account_number} ({'Primary' if account_number == '1' else 'Secondary'})")
+
 
 async def take_screenshot(page, name):
     try:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"screenshot_{name }_{timestamp }.png"
+        filename = f"screenshot_{name}_{timestamp}.png"
         await page.screenshot(path=filename)
-        logging.info(f"📸 Screenshot saved: {filename }")
+        logging.info(f"📸 Screenshot saved: {filename}")
     except Exception as e:
-        logging.error(f"Screenshot error: {e }")
+        logging.error(f"Screenshot error: {e}")
+
 
 async def check_login_status(page):
     try:
@@ -54,50 +56,44 @@ async def check_login_status(page):
     except:
         return False
 
+
 async def ensure_logged_in(page, username, password):
     if await check_login_status(page):
         logging.info("✅ Already logged in!")
         return True
-
     logging.info("🔐 Not logged in, attempting to log in...")
     return await login_first(page, username, password)
+
 
 async def login_first(page, username, password):
     try:
         logging.info("🔐 Starting full login process...")
-
-        # Navigate to main page first
-        await page.goto("{https://clubspark.lta.org.uk/SouthwarkPark"})
+        await page.goto("https://clubspark.lta.org.uk/SouthwarkPark")
         await page.wait_for_timeout(2000)
 
-        # Accept cookies if present
         try:
             await page.click(".osano-cm-accept-all")
             logging.info("✅ Cookies accepted")
             await page.wait_for_timeout(1000)
         except Exception as e:
-            logging.warning(f"Cookie acceptance button not found: {e }")
+            logging.warning(f"Cookie acceptance button not found: {e}")
 
-        # Step 1: Click Sign in
         try:
             await page.click("a:has-text('Sign in')")
             logging.info("✅ Clicked on Sign in")
             await page.wait_for_timeout(2000)
         except Exception as e:
-            logging.warning(f"Sign in link not found: {e }")
-            # Try direct navigation to login
-            await page.goto("{https://clubspark.lta.org.uk/SouthwarkPark/Account/Login"})
+            logging.warning(f"Sign in link not found: {e}")
+            await page.goto("https://clubspark.lta.org.uk/SouthwarkPark/Account/Login")
             await page.wait_for_timeout(2000)
 
-        # Step 2: Click Login button if needed
         try:
             await page.click("button:has-text('Login')")
             logging.info("✅ Clicked on Login")
             await page.wait_for_timeout(2000)
         except Exception as e:
-            logging.warning(f"Login button not found: {e }")
+            logging.warning(f"Login button not found: {e}")
 
-        # Step 3: Fill credentials
         try:
             await page.fill("input[name='username']", username)
             logging.info("✅ Username entered")
@@ -105,14 +101,10 @@ async def login_first(page, username, password):
             await page.fill("input[name='password']", password)
             logging.info("✅ Password entered")
 
-            # Submit login
             await page.click("button:has-text('Log in')")
             logging.info("✅ Login submitted")
-
-            # Wait for login to complete
             await page.wait_for_timeout(3000)
 
-            # Verify login succeeded
             if await check_login_status(page):
                 logging.info("✅ Login confirmed!")
                 return True
@@ -120,16 +112,16 @@ async def login_first(page, username, password):
                 logging.error("❌ Login not confirmed")
                 await take_screenshot(page, "login_failed")
                 return False
-
         except Exception as e:
-            logging.error(f"Error entering credentials: {e }")
+            logging.error(f"Error entering credentials: {e}")
             await take_screenshot(page, "login_error")
             return False
 
     except Exception as e:
-        logging.error(f"❌ Login error: {e }")
+        logging.error(f"❌ Login error: {e}")
         await take_screenshot(page, "login_error")
         return False
+
 
 async def find_and_book_slot(page):
     try:
@@ -143,11 +135,11 @@ async def find_and_book_slot(page):
             pass
 
         target_time_minutes = hour * 60 + minutes
-        xpath_query = f"//a[@class='book-interval not-booked' and contains(@data-test-id, '|{target_time_minutes }')]"
+        xpath_query = f"//a[@class='book-interval not-booked' and contains(@data-test-id, '|{target_time_minutes}')]"
 
         try:
-            await page.click(f"xpath={xpath_query }")
-            logging.info(f"🎯 SLOT FOUND DIRECTLY at {hour_str }!")
+            await page.click(f"xpath={xpath_query}")
+            logging.info(f"🎯 SLOT FOUND DIRECTLY at {hour_str}!")
             await page.wait_for_timeout(1000)
             return await complete_booking_process(page)
         except:
@@ -159,46 +151,42 @@ async def find_and_book_slot(page):
                 if '|' in data_test_id:
                     parts = data_test_id.split('|')
                     if len(parts) >= 3 and int(parts[2]) == target_time_minutes:
-                        logging.info(f"🎯 SLOT FOUND at {hour_str }!")
+                        logging.info(f"🎯 SLOT FOUND at {hour_str}!")
                         await link.click()
                         await page.wait_for_timeout(1000)
                         return await complete_booking_process(page)
 
-        logging.warning(f"⚠️ No slot found for {hour_str }")
+        logging.warning(f"⚠️ No slot found for {hour_str}")
         return False
     except Exception as e:
-        logging.error(f"❌ Error: {e }")
+        logging.error(f"❌ Error: {e}")
         return False
+
 
 async def complete_booking_process(page):
     try:
-        # Check if we're still logged in after clicking the slot
         if not await check_login_status(page):
             logging.error("❌ Redirect to login after selecting slot!")
             return False
 
-        # Select duration
         try:
             await page.click(".select2-selection--single")
             options = await page.query_selector_all(".select2-results__option")
             if len(options) >= 2:
                 await options[1].click()
         except Exception as e:
-            logging.warning(f"Could not select duration: {e }")
+            logging.warning(f"Could not select duration: {e}")
 
-        # Click Continue
         try:
             await page.click("button:has-text('Continue')")
         except Exception as e:
-            logging.error(f"Continue button not found: {e }")
+            logging.error(f"Continue button not found: {e}")
             return False
 
-        # Check if we're still logged in after clicking Continue
         if not await check_login_status(page):
             logging.error("❌ Redirect to login after Continue!")
             return False
 
-        # Look for payment button
         try:
             await page.click("#paynow")
             return await handle_stripe_payment(page)
@@ -207,33 +195,29 @@ async def complete_booking_process(page):
             return False
 
     except Exception as e:
-        logging.error(f"❌ Booking error: {e }")
+        logging.error(f"❌ Booking error: {e}")
         return False
+
 
 async def handle_stripe_payment(page):
     try:
         logging.info("💳 Handling Stripe payment...")
 
-        # Check if we're on the login page instead of Stripe
         if "login" in page.url.lower():
             logging.error("❌ On login page instead of Stripe!")
             return False
 
-        # Wait for Stripe iframes
         iframes = await page.query_selector_all("iframe[name^='__privateStripeFrame']")
         if len(iframes) < 3:
             logging.error("❌ Not enough Stripe iframes")
             return False
 
-        # Fill payment details
         await iframes[0].frame_locator("input[name='cardnumber']").fill(card_number)
         await iframes[1].frame_locator("input[name='exp-date']").fill(card_expiry)
         await iframes[2].frame_locator("input[name='cvc']").fill(card_cvc)
 
-        # Submit payment
         await page.click("#cs-stripe-elements-submit-button")
 
-        # Wait for confirmation
         try:
             await page.wait_for_url("**/confirmation**", timeout=20000)
             logging.info("🎉 BOOKING CONFIRMED!")
@@ -248,8 +232,9 @@ async def handle_stripe_payment(page):
                 return False
 
     except Exception as e:
-        logging.error(f"❌ Stripe payment error: {e }")
+        logging.error(f"❌ Stripe payment error: {e}")
         return False
+
 
 async def main():
     async with async_playwright() as p:
@@ -264,7 +249,7 @@ async def main():
             logging.error("❌ Unable to log in!")
             return
 
-        booking_url = f"{https://clubspark.lta.org.uk/SouthwarkPark/Booking/BookByDate#?date={date}&role=member"}
+        booking_url = f"https://clubspark.lta.org.uk/SouthwarkPark/Booking/BookByDate#?date={date}&role=member"
         await page.goto(booking_url)
         await page.wait_for_timeout(2000)
 
@@ -294,9 +279,8 @@ async def main():
                 await page.wait_for_timeout(200)
 
         logging.info(f"✅ Script finished after {(datetime.now() - start_time).seconds}s and {attempt} attempts")
-
         await browser.close()
 
+
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
