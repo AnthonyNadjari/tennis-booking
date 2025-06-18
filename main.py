@@ -204,7 +204,7 @@ class TennisBookingBot:
 
 
 # Add the login method to the TennisBookingBot class
-TennisBookingBot.login = login
+
 
 
 async def find_available_slots(self) -> List[str]:
@@ -281,8 +281,8 @@ async def book_slot(self) -> bool:
 
 
 # Add methods to the class
-TennisBookingBot.find_available_slots = find_available_slots
-TennisBookingBot.book_slot = book_slot
+
+
 
 
 async def complete_booking(self) -> bool:
@@ -372,8 +372,8 @@ async def handle_payment(self) -> bool:
 
 
 # Add methods to the class
-TennisBookingBot.complete_booking = complete_booking
-TennisBookingBot.handle_payment = handle_payment
+
+
 
 
 async def run_booking_loop(self, max_attempts: int = 300, max_duration: int = 300) -> bool:
@@ -418,7 +418,7 @@ async def run_booking_loop(self, max_attempts: int = 300, max_duration: int = 30
 
 
 # Add the method to the class
-TennisBookingBot.run_booking_loop = run_booking_loop
+
 
 
 async def main():
