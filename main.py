@@ -121,7 +121,7 @@ async def login_first(self):
         logging.info("🔐 Processus de connexion complet...")
         
         # Navigate to main page first
-        await self.page.goto("{https://clubspark.lta.org.uk/SouthwarkPark"}, wait_until='domcontentloaded')
+        await self.page.goto("https://clubspark.lta.org.uk/SouthwarkPark", wait_until='domcontentloaded')
         await asyncio.sleep(2)
         
         # Accept cookies if present
@@ -139,7 +139,7 @@ async def login_first(self):
         except Exception as e:
             logging.warning(f"Sign in non trouvé: {e}")
             # Try direct navigation to login
-            await self.page.goto("{https://clubspark.lta.org.uk/SouthwarkPark/Account/Login"})
+            await self.page.goto("https://clubspark.lta.org.uk/SouthwarkPark/Account/Login")
             await asyncio.sleep(2)
 
         # Step 2: Click Login button if needed
