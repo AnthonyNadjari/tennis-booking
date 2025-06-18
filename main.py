@@ -88,7 +88,7 @@ class FastCourtBooker:
             logging.info("🔐 Fast login process...")
 
             # Navigate directly to login page
-            await self.page.goto("{https://clubspark.lta.org.uk/SouthwarkPark/Account/Login"},
+            await self.page.goto("https://clubspark.lta.org.uk/SouthwarkPark/Account/Login",
                                  wait_until='domcontentloaded')
 
             # Handle cookies immediately
