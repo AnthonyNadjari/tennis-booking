@@ -15,6 +15,39 @@ logging.basicConfig(
     ]
 )
 
+
+import subprocess
+import sys
+import os
+
+
+def ensure_playwright_setup():
+    """Ensure Playwright is properly set up"""
+    try:
+        # Check if already installed
+        chromium_path = "/home/runner/.cache/ms-playwright/chromium-1091/chrome-linux/chrome"
+        if os.path.exists(chromium_path):
+            print("✅ Playwright Chromium already installed")
+            return True
+
+        print("🔧 Installing Playwright Chromium...")
+        result = subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"],
+                                capture_output=True, text=True)
+
+        if result.returncode == 0:
+            print("✅ Playwright Chromium installed successfully")
+            return True
+        else:
+            print(f"❌ Installation failed: {result.stderr}")
+            return False
+
+    except Exception as e:
+        print(f"❌ Setup error: {e}")
+        return False
+
+
+
+
 # Environment variables
 account_number = os.environ.get('ACCOUNT', '1')
 username = os.environ.get('TENNIS_USERNAME2' if account_number == '2' else 'TENNIS_USERNAME')
