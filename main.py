@@ -115,7 +115,7 @@ class FastCourtBooker:
         except Exception as e:
             logging.error(f"Screenshot error: {e}")
 
-    async def login_first(self):
+async def login_first(self):
     """Direct conversion of your working Selenium login"""
     try:
         logging.info("🔐 Processus de connexion complet...")
