@@ -115,44 +115,107 @@ class FastCourtBooker:
         except Exception as e:
             logging.error(f"Screenshot error: {e}")
 
-    async def quick_login(self):
-        """Optimized login process"""
+    async def login_first(self):
+    """Direct conversion of your working Selenium login"""
+    try:
+        logging.info("🔐 Processus de connexion complet...")
+        
+        # Navigate to main page first
+        await self.page.goto("{https://clubspark.lta.org.uk/SouthwarkPark"}, wait_until='domcontentloaded')
+        await asyncio.sleep(2)
+        
+        # Accept cookies if present
         try:
-            logging.info("🔐 Fast login process...")
+            await self.page.click(".osano-cm-accept-all", timeout=500)
+            await asyncio.sleep(0.5)
+        except:
+            pass
 
-            # Navigate directly to login page
-            await self.page.goto("https://clubspark.lta.org.uk/SouthwarkPark/Account/Login",
-                                 wait_until='domcontentloaded')
+        # Step 1: Click Sign in
+        try:
+            await self.page.click("//a[contains(text(), 'Sign in') or contains(@href, 'login')]", timeout=10000)
+            logging.info("✅ Cliqué sur Sign in")
+            await asyncio.sleep(2)
+        except Exception as e:
+            logging.warning(f"Sign in non trouvé: {e}")
+            # Try direct navigation to login
+            await self.page.goto("{https://clubspark.lta.org.uk/SouthwarkPark/Account/Login"})
+            await asyncio.sleep(2)
 
-            # Handle cookies immediately
-            try:
-                await self.page.click(".osano-cm-accept-all", timeout=1000)
-            except:
-                pass
+        # Step 2: Click Login button if needed
+        try:
+            await self.page.click("//button[contains(text(), 'Login') or contains(text(), 'Log in')]", timeout=5000)
+            logging.info("✅ Cliqué sur Login")
+            await asyncio.sleep(2)
+        except:
+            pass
 
-            # Fill credentials in parallel
-            await asyncio.gather(
-                self.page.fill("input[placeholder='Username'], input[name='username']", username),
-                self.page.fill("input[type='password']", password)
-            )
+        # Step 3: Fill credentials
+        try:
+            # Wait for form to be present
+            await self.page.wait_for_selector("//input[@placeholder='Username' or @name='username' or @id='username']", timeout=10000)
+            
+            await self.page.fill("//input[@placeholder='Username' or @name='username' or @id='username']", username)
+            logging.info("✅ Username saisi")
 
-            # Submit and wait for navigation
-            await self.page.click("button[type='submit'], button:has-text('Log in')")
+            await self.page.fill("//input[@placeholder='Password' or @name='password' or @id='password' or @type='password']", password)
+            logging.info("✅ Password saisi")
 
-            # Wait for login success indicators
-            try:
-                await self.page.wait_for_selector("text=My bookings, text=Log out", timeout=5000)
-                self.logged_in = True
-                logging.info("✅ Login successful")
+            # Submit login
+            await self.page.click("//button[contains(text(), 'Log in') or contains(text(), 'Login') or @type='submit']")
+            logging.info("✅ Login soumis")
+
+            # Wait for login to complete
+            await asyncio.sleep(3)
+            
+            # Verify login succeeded
+            if await self.check_login_status():
+                logging.info("✅ Login confirmé!")
                 return True
-            except:
-                logging.error("❌ Login failed")
+            else:
+                logging.error("❌ Login non confirmé")
                 await self.screenshot("login_failed")
                 return False
 
         except Exception as e:
-            logging.error(f"Login error: {e}")
+            logging.error(f"Erreur saisie credentials: {e}")
+            await self.screenshot("login_error")
             return False
+
+    except Exception as e:
+        logging.error(f"❌ Erreur login: {e}")
+        await self.screenshot("login_error")
+        return False
+
+async def check_login_status(self):
+    """Convert your working login check"""
+    try:
+        page_content = await self.page.content()
+        # Multiple indicators of being logged in
+        logged_in_indicators = ["My bookings", "Log out", "Sign out", "My account", "Account settings"]
+        
+        for indicator in logged_in_indicators:
+            if indicator in page_content:
+                return True
+        
+        # Check for login form as negative indicator
+        current_url = self.page.url
+        if "username" in page_content.lower() and "password" in page_content.lower():
+            if "login" in current_url.lower() or "signin" in current_url.lower():
+                return False
+        
+        return False
+    except:
+        return False
+
+async def ensure_logged_in(self):
+    """Convert your ensure_logged_in logic"""
+    if await self.check_login_status():
+        logging.info("✅ Déjà connecté!")
+        return True
+    
+    logging.info("🔐 Pas connecté, tentative de connexion...")
+    return await self.login_first()
 
     async def check_login_status(self):
         """Quick login status check"""
