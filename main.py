@@ -241,6 +241,7 @@ except Exception as e:
     logging.error(f"❌ Error occurred: {e}")
     take_screenshot("error")
 finally:
+    time.sleep(5)
 
 
     logging.info("✅ Browser closed")
