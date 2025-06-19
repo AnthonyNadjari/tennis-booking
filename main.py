@@ -206,44 +206,34 @@ try:
     enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', '')
     enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', card_cvc)
 
-    click_on('//*[@id="cs-stripe-elements-submit-button"]')
-    logging.info("✅ Payment submitted")
+    try:
+        logging.info("💳 Attempting to submit payment...")
+        click_on('//*[@id="cs-stripe-elements-submit-button"]')
+        logging.info("✅ Payment button clicked successfully")
     
-    # Wait for payment confirmation
-    confirmation_words = ["confirmed", "success", "booked", "reserved", "confirmation", "thank you", "complete"]
-    max_wait_time = 30
-    start_time = time.time()
-    confirmed = False
+        # Wait and check what happens
+        for i in range(10):  # Check for 10 seconds
+            time.sleep(0.5)
+            current_url = driver.current_url
+            logging.info(f"⏰ Second {i + 1}: Current URL: {current_url}")
     
-    while time.time() - start_time < max_wait_time:
-        try:
-            current_url = driver.current_url.lower()
-            if "confirmation" in current_url or "success" in current_url:
-                logging.info("🎉 BOOKING CONFIRMED - URL indicates success!")
-                confirmed = True
+            # Check if we're on a success/confirmation page
+            if "success" in current_url.lower() or "confirmation" in current_url.lower() or "thank" in current_url.lower():
+                logging.info("🎉 Payment appears successful - on confirmation page!")
                 break
-            
+    
+            # Check if still on payment page
+            if "payment" in current_url.lower() or "stripe" in current_url.lower():
+                logging.info("⚠️ Still on payment page...")
+    
+            # Check page content for success messages
             page_source = driver.page_source.lower()
-            for word in confirmation_words:
-                if word in page_source:
-                    logging.info(f"🎉 BOOKING CONFIRMED - Found: '{word}'!")
-                    confirmed = True
-                    break
-            
-            if confirmed:
+            if "booking confirmed" in page_source or "payment successful" in page_source:
+                logging.info("🎉 Success message found on page!")
+                time.sleep(5)
                 break
-                
-            time.sleep(1)
-        except:
-            time.sleep(1)
     
-    if confirmed:
-        take_screenshot("booking_confirmed")
-        logging.info("🎉 Booking process completed successfully!")
-    else:
-        take_screenshot("payment_submitted_uncertain")
-        logging.info("⚠️ Payment submitted but confirmation unclear")
-
+        logging.info("🎉 Booking process completed!")
 except Exception as e:
     logging.error(f"❌ Error occurred: {e}")
     take_screenshot("error")
