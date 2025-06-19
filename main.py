@@ -109,7 +109,7 @@ def login_process():
 
         if not enter_data('//*[@id="input-2"]', password):
             return False
-
+        take_screenshot("afterbooking")
         logging.info("✅ Login completed")
         time.sleep(2)
         return True
