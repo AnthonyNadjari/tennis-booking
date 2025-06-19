@@ -206,34 +206,37 @@ try:
     enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', '')
     enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', card_cvc)
 
-    try:
-        logging.info("💳 Attempting to submit payment...")
-        click_on('//*[@id="cs-stripe-elements-submit-button"]')
-        logging.info("✅ Payment button clicked successfully")
+
+    logging.info("💳 Attempting to submit payment...")
+    click_on('//*[@id="cs-stripe-elements-submit-button"]')
+    logging.info("✅ Payment button clicked successfully")
     
-        # Wait and check what happens
-        for i in range(10):  # Check for 10 seconds
-            time.sleep(0.5)
-            current_url = driver.current_url
-            logging.info(f"⏰ Second {i + 1}: Current URL: {current_url}")
+    # Wait and check what happens
+    for i in range(10):  # Check for 10 seconds
+        time.sleep(0.5)
+        current_url = driver.current_url
+        logging.info(f"⏰ Second {i + 1}: Current URL: {current_url}")
     
-            # Check if we're on a success/confirmation page
-            if "success" in current_url.lower() or "confirmation" in current_url.lower() or "thank" in current_url.lower():
-                logging.info("🎉 Payment appears successful - on confirmation page!")
-                break
+        # Check if we're on a success/confirmation page
+        if "success" in current_url.lower() or "confirmation" in current_url.lower() or "thank" in current_url.lower():
+            logging.info("🎉 Payment appears successful - on confirmation page!")
+            break
     
-            # Check if still on payment page
-            if "payment" in current_url.lower() or "stripe" in current_url.lower():
-                logging.info("⚠️ Still on payment page...")
+        # Check if still on payment page
+        if "payment" in current_url.lower() or "stripe" in current_url.lower():
+            logging.info("⚠️ Still on payment page...")
     
-            # Check page content for success messages
-            page_source = driver.page_source.lower()
-            if "booking confirmed" in page_source or "payment successful" in page_source:
-                logging.info("🎉 Success message found on page!")
-                time.sleep(5)
-                break
+        # Check page content for success messages
+        page_source = driver.page_source.lower()
+        if "booking confirmed" in page_source or "payment successful" in page_source:
+            logging.info("🎉 Success message found on page!")
+            time.sleep(5)
+            break
     
-        logging.info("🎉 Booking process completed!")
+    logging.info("🎉 Booking process completed!")
+
+
+
 except Exception as e:
     logging.error(f"❌ Error occurred: {e}")
     take_screenshot("error")
