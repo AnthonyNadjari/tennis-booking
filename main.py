@@ -130,6 +130,7 @@ def select_date():
 
         # Find and click the target date
         dates = driver.find_elements(By.CSS_SELECTOR, 'td[data-handler="selectDay"]')
+        print(dates)
         for d in dates:
             if d.text == booking_day:
                 d.click()
