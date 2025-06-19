@@ -213,53 +213,208 @@ def find_and_book_slot():
         logging.error(f"❌ Slot booking error: {e}")
         take_screenshot("slot_booking_error")
         return False
+
+
 def complete_booking():
     try:
         logging.info("💳 Completing booking process...")
-
-        # Select duration
-        if not click_on('/html/body/div[8]/div/div/div/div[1]/form/div[1]/div[1]/div[2]/div/div/div/span'):
-            return False
-        if not click_on('/html/body/span/span/span[2]/ul/li[2]'):
-            return False
-
-        # Submit booking
-        if not click_on('//*[@id="submit-booking"]'):
-            return False
-
-        # Pay now
-        take_screenshot("before paynow")
-        if not click_on('//*[@id="paynow"]'):
-            return False
-
-        time.sleep(1)
-        take_screenshot("we clicked paynox and waiter 1 sec")
-        # Fill payment details
-        payment_fields = [
-            ('//*[@id="cs-stripe-elements-card-number"]/div/iframe', card_number),
-            ('//*[@id="cs-stripe-elements-card-expiry"]/div/iframe', card_expiry),
-            ('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', card_cvc)
+        time.sleep(2)
+        
+        # Step 1: Handle duration selection more robustly
+        duration_selected = False
+        
+        try:
+            # First, try to click the dropdown to open it
+            dropdown_selectors = [
+                '/html/body/div[8]/div/div/div/div[1]/form/div[1]/div[1]/div[2]/div/div/div/span',
+                '//span[contains(@class, "select2-selection")]',
+                '//*[contains(@class, "select2-selection--single")]'
+            ]
+            
+            dropdown_opened = False
+            for selector in dropdown_selectors:
+                try:
+                    element = WebDriverWait(driver, 5).until(
+                        EC.element_to_be_clickable((By.XPATH, selector))
+                    )
+                    element.click()
+                    dropdown_opened = True
+                    logging.info("✅ Dropdown opened")
+                    time.sleep(1)
+                    break
+                except:
+                    continue
+            
+            if dropdown_opened:
+                # Wait for dropdown options to appear and try multiple selectors
+                option_selectors = [
+                    '/html/body/span/span/span[2]/ul/li[2]',
+                    '//li[contains(@class, "select2-results__option")][2]',
+                    '//ul[contains(@class, "select2-results")]//li[2]',
+                    '//li[@role="option"][2]',
+                    '//span[contains(@class, "select2-results")]//li[2]'
+                ]
+                
+                # Wait for options to be visible
+                try:
+                    WebDriverWait(driver, 5).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, ".select2-results__option"))
+                    )
+                except:
+                    pass
+                
+                for selector in option_selectors:
+                    try:
+                        # Find all matching elements
+                        elements = driver.find_elements(By.XPATH, selector)
+                        for element in elements:
+                            if element.is_displayed():
+                                # Try JavaScript click if regular click fails
+                                try:
+                                    element.click()
+                                    duration_selected = True
+                                    logging.info("✅ Duration selected")
+                                    break
+                                except:
+                                    # Try JavaScript click as fallback
+                                    driver.execute_script("arguments[0].click();", element)
+                                    duration_selected = True
+                                    logging.info("✅ Duration selected (JS click)")
+                                    break
+                        if duration_selected:
+                            break
+                    except:
+                        continue
+            
+            # Alternative: Try native select element
+            if not duration_selected:
+                try:
+                    from selenium.webdriver.support.ui import Select
+                    select_element = driver.find_element(By.ID, "booking-duration")
+                    select = Select(select_element)
+                    select.select_by_index(1)
+                    duration_selected = True
+                    logging.info("✅ Duration selected (native select)")
+                except:
+                    pass
+                    
+        except Exception as e:
+            logging.warning(f"⚠️ Duration selection error: {e}")
+        
+        if not duration_selected:
+            logging.warning("⚠️ Could not select duration, continuing anyway...")
+        
+        time.sleep(2)
+        
+        # Step 2: Submit booking
+        submit_selectors = [
+            '//*[@id="submit-booking"]',
+            '//button[contains(text(), "Continue")]',
+            '//button[contains(text(), "Submit")]',
+            '//input[@type="submit"]',
+            '//button[@type="submit"]'
         ]
-
-        for xpath, value in payment_fields:
-            # Clear field multiple times (as in original)
-            for _ in range(3):
-                enter_data(xpath, '')
-            enter_data(xpath, value)
-
-        # Submit payment
-        if not click_on('//*[@id="cs-stripe-elements-submit-button"]'):
+        
+        submit_clicked = False
+        for selector in submit_selectors:
+            try:
+                element = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((By.XPATH, selector))
+                )
+                element.click()
+                submit_clicked = True
+                logging.info("✅ Booking submitted")
+                break
+            except:
+                continue
+        
+        if not submit_clicked:
+            logging.error("❌ Could not submit booking")
+            take_screenshot("submit_booking_error")
             return False
-
-        logging.info("✅ Payment submitted")
-        time.sleep(5)
-        return True
-
+        
+        time.sleep(3)
+        
+        # Step 3: Handle Pay Now button
+        pay_selectors = [
+            '//*[@id="paynow"]',
+            '//button[contains(text(), "Pay now")]',
+            '//button[contains(text(), "Pay Now")]',
+            '//input[@value="Pay now"]',
+            '//a[contains(text(), "Pay now")]'
+        ]
+        
+        pay_clicked = False
+        for selector in pay_selectors:
+            try:
+                element = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, selector))
+                )
+                element.click()
+                pay_clicked = True
+                logging.info("✅ Pay Now clicked")
+                break
+            except:
+                continue
+        
+        if not pay_clicked:
+            logging.error("❌ Could not click Pay Now")
+            take_screenshot("pay_now_error")
+            return False
+        
+        time.sleep(2)
+        
+        # Step 4: Handle payment form
+        return handle_payment_form()
+        
     except Exception as e:
         logging.error(f"❌ Booking completion error: {e}")
         take_screenshot("booking_completion_error")
         return False
 
+def handle_payment_form():
+    try:
+        logging.info("💳 Filling payment form...")
+        
+        # Check if payment form exists
+        payment_fields = [
+            ('//*[@id="cs-stripe-elements-card-number"]/div/iframe', card_number),
+            ('//*[@id="cs-stripe-elements-card-expiry"]/div/iframe', card_expiry),
+            ('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', card_cvc)
+        ]
+        
+        for xpath, value in payment_fields:
+            # Clear and fill each field multiple times
+            for _ in range(3):
+                enter_data(xpath, '')
+            if not enter_data(xpath, value):
+                logging.warning(f"⚠️ Could not fill payment field: {xpath}")
+        
+        # Submit payment
+        submit_selectors = [
+            '//*[@id="cs-stripe-elements-submit-button"]',
+            '//button[contains(text(), "Pay")]',
+            '//input[@type="submit"]'
+        ]
+        
+        for selector in submit_selectors:
+            try:
+                element = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((By.XPATH, selector))
+                )
+                element.click()
+                logging.info("✅ Payment submitted")
+                time.sleep(5)
+                return True
+            except:
+                continue
+        
+        logging.error("❌ Could not submit payment")
+        return False
+        
+    except Exception as e:
+        logging.error(f"❌ Payment form error: {e}")
+        return False
 
 # Main execution
 try:
