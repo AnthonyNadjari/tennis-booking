@@ -94,28 +94,29 @@ def click_on(xpath):
 def login_process():
     try:
         logging.info("🔐 Starting login process...")
-
-        # Navigate to login page
-        driver.get(
-            "https://clubspark.lta.org.uk/SouthwarkPark/Account/SignIn?returnUrl=https%3a%2f%2fclubspark.lta.org.uk%2fSouthwarkPark%2fBooking%2fBookByDate")
-
-        # Click login button
+        
+        # Navigate to login page (exact same URL as original)
+        driver.get("{https://clubspark.lta.org.uk/SouthwarkPark/Account/SignIn?returnUrl=https%3a%2f%2fclubspark.lta.org.uk%2fSouthwarkPark%2fBooking%2fBookByDate"})
+        
+        # Click login button (exact same XPath)
         if not click_on('/html/body/div[3]/div[1]/div[2]/div[1]/div[2]/form/button'):
+            logging.error("❌ Could not click login button")
             return False
-
-        # Enter credentials
+            
+        # Enter username (exact same XPath and method)
         if not enter_data('//*[@id="154:0"]', username):
+            logging.error("❌ Could not enter username")
             return False
-
+            
+        # Enter password (exact same XPath and method)
         if not enter_data('//*[@id="input-2"]', password):
+            logging.error("❌ Could not enter password")
             return False
-
+            
         logging.info("✅ Login completed")
-        take_screenshot("after_login_bedore_sleep")
-        time.sleep(2)
-        take_screenshot("after_sleep")
+        time.sleep(2)  # Same wait time as original
         return True
-
+        
     except Exception as e:
         logging.error(f"❌ Login error: {e}")
         take_screenshot("login_error")
