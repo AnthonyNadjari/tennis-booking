@@ -233,7 +233,7 @@ def complete_booking():
             return False
 
         time.sleep(1)
-
+        take_screenshot("we clicked paynox and waiter 1 sec")
         # Fill payment details
         payment_fields = [
             ('//*[@id="cs-stripe-elements-card-number"]/div/iframe', card_number),
