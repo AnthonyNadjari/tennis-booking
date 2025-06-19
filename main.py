@@ -242,5 +242,5 @@ except Exception as e:
     take_screenshot("error")
 finally:
     if driver:
-        driver.quit()
+
     logging.info("✅ Browser closed")
