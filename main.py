@@ -122,7 +122,7 @@ def login_process():
 
 def select_date():
     try:
-        booking_url = f"https://clubspark.lta.org.uk/SouthwarkPark/Booking/BookByDate#?date={booking_date}&role=member"
+        booking_url = f"https://clubspark.lta.org.uk/SouthwarkPark/Booking/BookByDate#?date={booking_day}&role=member"
         logging.info(f"🌐 Navigation vers: {booking_url}")
         driver.get(booking_url)
         time.sleep(3)
