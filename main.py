@@ -239,12 +239,12 @@ try:
         except:
             time.sleep(1)
     
-if confirmed:
-    take_screenshot("booking_confirmed")
-    logging.info("🎉 Booking process completed successfully!")
-else:
-    take_screenshot("payment_submitted_uncertain")
-    logging.info("⚠️ Payment submitted but confirmation unclear")
+    if confirmed:
+        take_screenshot("booking_confirmed")
+        logging.info("🎉 Booking process completed successfully!")
+    else:
+        take_screenshot("payment_submitted_uncertain")
+        logging.info("⚠️ Payment submitted but confirmation unclear")
 
 except Exception as e:
     logging.error(f"❌ Error occurred: {e}")
