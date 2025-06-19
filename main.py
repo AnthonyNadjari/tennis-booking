@@ -207,11 +207,43 @@ try:
     enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', '')
     enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', card_cvc)
 
-    click_on('//*[@id="cs-stripe-elements-submit-button"]')
-    logging.info("✅ Payment submitted")
+click_on('//*[@id="cs-stripe-elements-submit-button"]')
+logging.info("✅ Payment submitted")
 
-    time.sleep(5)
-    logging.info("🎉 Booking process completed!")
+# Wait for payment confirmation
+confirmation_words = ["confirmed", "success", "booked", "reserved", "confirmation", "thank you", "complete"]
+max_wait_time = 30
+start_time = time.time()
+confirmed = False
+
+while time.time() - start_time < max_wait_time:
+    try:
+        current_url = driver.current_url.lower()
+        if "confirmation" in current_url or "success" in current_url:
+            logging.info("🎉 BOOKING CONFIRMED - URL indicates success!")
+            confirmed = True
+            break
+        
+        page_source = driver.page_source.lower()
+        for word in confirmation_words:
+            if word in page_source:
+                logging.info(f"🎉 BOOKING CONFIRMED - Found: '{word}'!")
+                confirmed = True
+                break
+        
+        if confirmed:
+            break
+            
+        time.sleep(1)
+    except:
+        time.sleep(1)
+
+if confirmed:
+    take_screenshot("booking_confirmed")
+    logging.info("🎉 Booking process completed successfully!")
+else:
+    take_screenshot("payment_submitted_uncertain")
+    logging.info("⚠️ Payment submitted but confirmation unclear")
 
 except Exception as e:
     logging.error(f"❌ Error occurred: {e}")
