@@ -1,4 +1,5 @@
-
+import pandas as pd
+from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.keys import Keys
@@ -209,46 +210,5 @@ try:
 
     click_on('//*[@id="cs-stripe-elements-submit-button"]')
     logging.info("✅ Payment submitted")
-    
-    # Wait for payment confirmation
-    confirmation_words = ["confirmed", "success", "booked", "reserved", "confirmation", "thank you", "complete"]
-    max_wait_time = 30
-    start_time = time.time()
-    confirmed = False
-    
-    while time.time() - start_time < max_wait_time:
-        try:
-            current_url = driver.current_url.lower()
-            if "confirmation" in current_url or "success" in current_url:
-                logging.info("🎉 BOOKING CONFIRMED - URL indicates success!")
-                confirmed = True
-                break
-            
-            page_source = driver.page_source.lower()
-            for word in confirmation_words:
-                if word in page_source:
-                    logging.info(f"🎉 BOOKING CONFIRMED - Found: '{word}'!")
-                    confirmed = True
-                    break
-            
-            if confirmed:
-                break
-                
-            time.sleep(1)
-        except:
-            time.sleep(1)
-    
-    if confirmed:
-        take_screenshot("booking_confirmed")
-        logging.info("🎉 Booking process completed successfully!")
-    else:
-        take_screenshot("payment_submitted_uncertain")
-        logging.info("⚠️ Payment submitted but confirmation unclear")
 
-except Exception as e:
-    logging.error(f"❌ Error occurred: {e}")
-    take_screenshot("error")
-finally:
-    if driver:
-        driver.quit()
-    logging.info("✅ Browser closed")
+    time.sleep(5)
