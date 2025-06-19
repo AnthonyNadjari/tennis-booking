@@ -241,6 +241,6 @@ except Exception as e:
     logging.error(f"❌ Error occurred: {e}")
     take_screenshot("error")
 finally:
-    if driver:
+
 
     logging.info("✅ Browser closed")
