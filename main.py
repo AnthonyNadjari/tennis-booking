@@ -164,6 +164,7 @@ def find_and_book_slot():
                     logging.info(f"🎯 SLOT FOUND DIRECTLY at {hour_str}!")
                     target_slot.click()
                     logging.info("✅ Clicked!")
+                    take_screenshot("it is clicked")
                     return True
                     
                 except TimeoutException:
@@ -226,6 +227,7 @@ def complete_booking():
             return False
 
         # Pay now
+        take_screenshot("before paynow"
         if not click_on('//*[@id="paynow"]'):
             return False
 
