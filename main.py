@@ -122,25 +122,13 @@ def login_process():
 
 def select_date():
     try:
-        logging.info(f"📅 Selecting day: {booking_day}")
-
-        # Click date picker
-        if not click_on('//*[@id="book-by-date-view"]/div/div[1]/div/div[1]/button'):
-            return False
-
-        # Find and click the target date
-        print("aaa")
-        dates = driver.find_elements(By.CSS_SELECTOR, 'td[data-handler="selectDay"]')
-        print(dates)
-        for d in dates:
-            if d.text == booking_day:
-                d.click()
-                logging.info("✅ Date selected")
-                return True
-
-        logging.error(f"❌ Date {booking_day} not found")
-        return False
-
+        booking_url = f"https://clubspark.lta.org.uk/SouthwarkPark/Booking/BookByDate#?date={booking_date}&role=member"
+        logging.info(f"🌐 Navigation vers: {booking_url}")
+        driver.get(booking_url)
+        time.sleep(3)
+        logging.info("✅ Date selected via URL")
+        return True
+        
     except Exception as e:
         logging.error(f"❌ Date selection error: {e}")
         return False
