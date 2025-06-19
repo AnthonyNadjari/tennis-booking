@@ -35,7 +35,7 @@ password = os.environ.get('TENNIS_PASSWORD')  # Default fallback
 card_number = os.environ.get('CARD_NUMBER')
 card_expiry = os.environ.get('CARD_EXPIRY')
 card_cvc = os.environ.get('CARD_CVC')
-booking_day = os.environ.get('BOOKING_DAY')
+booking_day = os.environ.get('BOOKING_DATE')
 booking_hour = int(os.environ.get('BOOKING_HOUR'))  # 7 PM = 19 in 24h format
 booking_minutes = int(os.environ.get('BOOKING_MINUTES'))
 
