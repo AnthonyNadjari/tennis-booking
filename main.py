@@ -227,7 +227,7 @@ def complete_booking():
             return False
 
         # Pay now
-        take_screenshot("before paynow"
+        take_screenshot("before paynow")
         if not click_on('//*[@id="paynow"]'):
             return False
 
