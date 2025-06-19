@@ -228,7 +228,7 @@ try:
             page_source = driver.page_source.lower()
             for word in confirmation_words:
                 if word in page_source:
-                    logging.info(f"🎉 BOOKING CONFIRMED - Found: '{word <GO>}'!")
+                    logging.info(f"🎉 BOOKING CONFIRMED - Found: '{word}'!")
                     confirmed = True
                     break
             
