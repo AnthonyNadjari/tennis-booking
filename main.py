@@ -139,13 +139,6 @@ def find_and_book_slot():
     try:
         logging.info(f"🔍 Looking for slot at {hour_str} ({target_time_minutes} minutes)")
         
-        # Wait for page to load and check if booking links exist
-        try:
-            wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, 'a.book-interval')))
-        except TimeoutException:
-            logging.warning("⚠️ No booking intervals found on page - no slots available")
-            return False
-        
         # Retry logic - max 5 minutes
         start_time = time.time()
         max_duration = 5 * 60  # 5 minutes in seconds
@@ -154,82 +147,70 @@ def find_and_book_slot():
         while time.time() - start_time < max_duration:
             attempt += 1
             elapsed = int(time.time() - start_time)
-            logging.info(f"🔄 Attempt {attempt} (elapsed: {elapsed}s)")
-            
-            # Check if any booking links exist before searching
-            booking_links = driver.find_elements(By.CSS_SELECTOR, "a.book-interval.not-booked")
-            if not booking_links:
-                logging.warning("⚠️ No available booking slots found on page")
-                
-                # If no slots and still have time, refresh and try again
-                remaining_time = max_duration - (time.time() - start_time)
-                if remaining_time > 10:
-                    logging.info(f"🔄 Refreshing page... ({int(remaining_time)}s remaining)")
-                    try:
-                        driver.refresh()
-                        time.sleep(2)
-                        # Wait for page to load, but don't fail if no slots
-                        try:
-                            wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, 'a.book-interval')))
-                        except TimeoutException:
-                            logging.info("⚠️ Still no slots after refresh")
-                            continue
-                    except Exception as refresh_error:
-                        logging.error(f"❌ Refresh error: {refresh_error}")
-                        continue
-                else:
-                    logging.info("⏰ Time limit reached, stopping search")
-                    break
-                continue
-            
-            # Try direct XPath targeting first
-            xpath_query = f"//a[@class='book-interval not-booked' and contains(@data-test-id, '|{target_time_minutes}')]"
+            remaining_time = int(max_duration - (time.time() - start_time))
+            logging.info(f"🔄 Attempt {attempt} (elapsed: {elapsed}s, remaining: {remaining_time}s)")
             
             try:
-                target_slot = WebDriverWait(driver, 2).until(
-                    EC.element_to_be_clickable((By.XPATH, xpath_query))
-                )
-                logging.info(f"🎯 SLOT FOUND DIRECTLY at {hour_str}!")
-                target_slot.click()
-                logging.info("✅ Clicked!")
-                return True
+                # Wait for page to load - if no slots, this will timeout and we'll refresh
+                wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, 'a.book-interval')))
                 
-            except TimeoutException:
-                logging.info("⚠️ Direct search failed, trying fallback method...")
+                # Try direct XPath targeting first
+                xpath_query = f"//a[@class='book-interval not-booked' and contains(@data-test-id, '|{target_time_minutes}')]"
                 
-                # Fallback: search through all available slots
-                for link in booking_links:
-                    data_test_id = link.get_attribute('data-test-id') or ""
+                try:
+                    target_slot = WebDriverWait(driver, 2).until(
+                        EC.element_to_be_clickable((By.XPATH, xpath_query))
+                    )
+                    logging.info(f"🎯 SLOT FOUND DIRECTLY at {hour_str}!")
+                    target_slot.click()
+                    logging.info("✅ Clicked!")
+                    return True
                     
-                    if '|' in data_test_id:
-                        parts = data_test_id.split('|')
-                        if len(parts) >= 3:
-                            try:
-                                slot_time = int(parts[2])
-                                if slot_time == target_time_minutes:
-                                    logging.info(f"🎯 SLOT FOUND at {hour_str}!")
-                                    link.click()
-                                    return True
-                            except (ValueError, IndexError):
-                                continue
-                
-                # If no target slot found, wait before next attempt
-                remaining_time = max_duration - (time.time() - start_time)
-                if remaining_time > 10:
-                    logging.info(f"❌ Target slot not found, waiting before retry... ({int(remaining_time)}s remaining)")
-                    time.sleep(2)
-                else:
-                    logging.info("⏰ Time limit reached, stopping search")
-                    break
+                except TimeoutException:
+                    logging.info("⚠️ Direct search failed, trying fallback method...")
+                    
+                    # Fallback: search through all available slots
+                    booking_links = driver.find_elements(By.CSS_SELECTOR, "a.book-interval.not-booked")
+                    
+                    for link in booking_links:
+                        data_test_id = link.get_attribute('data-test-id') or ""
+                        
+                        if '|' in data_test_id:
+                            parts = data_test_id.split('|')
+                            if len(parts) >= 3:
+                                try:
+                                    slot_time = int(parts[2])
+                                    if slot_time == target_time_minutes:
+                                        logging.info(f"🎯 SLOT FOUND at {hour_str}!")
+                                        link.click()
+                                        return True
+                                except (ValueError, IndexError):
+                                    continue
+                    
+                    # Target slot not found in this attempt
+                    logging.info(f"❌ Target slot {hour_str} not found in current slots")
+                    
+            except TimeoutException:
+                # No booking intervals found at all
+                logging.info("⚠️ No booking slots available on page")
+            
+            # Check if we still have time to continue
+            if time.time() - start_time < max_duration - 2:  # Leave 2 seconds buffer
+                logging.info("🔄 Refreshing page to check for new slots...")
+                driver.refresh()
+                time.sleep(1)  # Short wait between refreshes
+            else:
+                logging.info("⏰ Time limit almost reached, stopping search")
+                break
         
-        logging.error(f"❌ No slot found for {hour_str} after {int(time.time() - start_time)}s")
+        total_elapsed = int(time.time() - start_time)
+        logging.error(f"❌ No slot found for {hour_str} after {total_elapsed}s and {attempt} attempts")
         return False
         
     except Exception as e:
         logging.error(f"❌ Slot booking error: {e}")
         take_screenshot("slot_booking_error")
         return False
-
 def complete_booking():
     try:
         logging.info("💳 Completing booking process...")
