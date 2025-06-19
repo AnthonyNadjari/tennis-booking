@@ -111,8 +111,9 @@ def login_process():
             return False
 
         logging.info("✅ Login completed")
-        take_screenshot("afterbooking")
+        take_screenshot("after_login_bedore_sleep")
         time.sleep(2)
+        take_screenshot("after_sleep")
         return True
 
     except Exception as e:
@@ -164,7 +165,7 @@ def find_and_book_slot():
                     logging.info(f"🎯 SLOT FOUND DIRECTLY at {hour_str}!")
                     target_slot.click()
                     logging.info("✅ Clicked!")
-                    take_screenshot("it is clicked")
+                    take_screenshot("the slot is found and we clicked ")
                     return True
                     
                 except TimeoutException:
