@@ -129,6 +129,7 @@ def select_date():
             return False
 
         # Find and click the target date
+        print("aaa")
         dates = driver.find_elements(By.CSS_SELECTOR, 'td[data-handler="selectDay"]')
         print(dates)
         for d in dates:
