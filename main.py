@@ -96,7 +96,7 @@ def login_process():
         logging.info("🔐 Starting login process...")
         
         # Navigate to login page (exact same URL as original)
-        driver.get("{https://clubspark.lta.org.uk/SouthwarkPark/Account/SignIn?returnUrl=https%3a%2f%2fclubspark.lta.org.uk%2fSouthwarkPark%2fBooking%2fBookByDate"})
+        driver.get("https://clubspark.lta.org.uk/SouthwarkPark/Account/SignIn?returnUrl=https%3a%2f%2fclubspark.lta.org.uk%2fSouthwarkPark%2fBooking%2fBookByDate")
         
         # Click login button (exact same XPath)
         if not click_on('/html/body/div[3]/div[1]/div[2]/div[1]/div[2]/form/button'):
