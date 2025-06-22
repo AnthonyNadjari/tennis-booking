@@ -12,6 +12,25 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 import logging
 import os
 
+def take_screenshot(driver, filename_prefix="screenshot"):
+    """
+    Take a screenshot and save it to a file.
+
+    Args:
+        driver: The WebDriver instance.
+        filename_prefix (str): Prefix for the screenshot filename.
+    """
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{filename_prefix}_{timestamp}.png"
+        driver.save_screenshot(filename)
+        logging.info(f"Screenshot saved as {filename}")
+        return filename
+    except Exception as e:
+        logging.error(f"Error taking screenshot: {e}")
+        return None
+
+
 # Configuration du logging
 logging.basicConfig(
     level=logging.INFO,
@@ -26,14 +45,14 @@ logging.basicConfig(
 ACCOUNT_NUMBER = os.environ.get('ACCOUNT', '1')  # Default to account 1 if not specified
 USERNAME = os.environ.get('TENNIS_USERNAME2') if ACCOUNT_NUMBER == '2' else os.environ.get('TENNIS_USERNAME')
 PASSWORD = os.environ.get('TENNIS_PASSWORD')
-CARD_NUMBER = os.environ.get('CARD_NUMBER', '5354562794845156')
-CARD_EXPIRY = os.environ.get('CARD_EXPIRY', '04/30')
-CARD_CVC = os.environ.get('CARD_CVC', '666')
+CARD_NUMBER = os.environ.get('CARD_NUMBER')
+CARD_EXPIRY = os.environ.get('CARD_EXPIRY')
+CARD_CVC = os.environ.get('CARD_CVC')
 CHROME_DRIVER_PATH = ChromeDriverManager().install()
-DATE = os.environ.get('BOOKING_DATE', '2025-06-28')
-BOOKING_START_HOUR = int(os.environ.get('BOOKING_HOUR', '19'))  # Default to 19:00
-BOOKING_START_MINUTE = int(os.environ.get('BOOKING_MINUTES', '0'))
-COURT = os.environ.get('BOOKING_COURT', 'Court1')  # Default to Court1 if not specified
+DATE = os.environ.get('BOOKING_DATE')
+BOOKING_START_HOUR = int(os.environ.get('BOOKING_HOUR'))  # Default to 19:00
+BOOKING_START_MINUTE = int(os.environ.get('BOOKING_MINUTES')
+COURT = os.environ.get('BOOKING_COURT')  # Default to Court1 if not specified
 
 # Check if username and password are available
 if not USERNAME or not PASSWORD:
@@ -121,11 +140,22 @@ def initialize():
     """
     try:
         driver.get(r"https://clubspark.lta.org.uk/SouthwarkPark/Account/SignIn?returnUrl=https%3a%2f%2fclubspark.lta.org.uk%2fSouthwarkPark%2fBooking%2fBookByDate")
+        print("linked accessed")
+        take_screenshot(driver,"we are on the logging page")
         click_on('/html/body/div[3]/div[1]/div[2]/div[1]/div[2]/form/button')
         enter_data('//*[@id="154:0"]', USERNAME)
         enter_data('//*[@id="input-2"]', PASSWORD)
+
+        print("password entered")
+        take_screenshot(driver,"we entered credentials")
+
+        
         wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.osano-cm-dialog__close.osano-cm-close')))
         driver.find_element(By.CSS_SELECTOR, 'button.osano-cm-dialog__close.osano-cm-close').click()
+        print("button clicked")
+        take_screenshot(driver,"we clicked and logged in")
+        
+
     except Exception as e:
         logging.error(f"Error during initialization: {e}")
 
