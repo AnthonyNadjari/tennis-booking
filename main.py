@@ -32,10 +32,10 @@ booking_date = os.environ.get('BOOKING_DATE')
 if booking_date:
     day = booking_date.split('-')[2].lstrip('0') or '1'  # Extract day and remove leading zero
 else:
-    day = os.environ.get('BOOKING_DAY', '25')
+    day = os.environ.get('BOOKING_DAY')
 
-hours = int(os.environ.get('BOOKING_HOUR', '14'))
-minutes = int(os.environ.get('BOOKING_MINUTES', '0'))
+hours = int(os.environ.get('BOOKING_HOUR'))
+minutes = int(os.environ.get('BOOKING_MINUTES'))
 
 logging.info(f"🎾 Tennis booking for day {day} at {hours:02d}:{minutes:02d}")
 logging.info(f"👤 Username: {username}")
