@@ -10,9 +10,9 @@ on:
       hour:
         description: 'Heure de réservation (7-21)'
         required: true
-        default: '7'
+        default: '19'  # Set default hour to 19
         type: choice
-        options: ['7','8','9','10','11','12','13','14','15','16','17','18','19','20','21']
+        options: ['7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21']
       minutes:
         description: 'Minutes de réservation (0 ou 30)'
         required: true
@@ -25,6 +25,12 @@ on:
         default: '1'
         type: choice
         options: ['1', '2']
+      court:
+        description: 'Court à réserver'
+        required: true
+        default: 'Court1'
+        type: choice
+        options: ['Court1', 'Court2', 'Court3', 'Court4']
 
 jobs:
   book-court:
@@ -70,6 +76,7 @@ jobs:
           BOOKING_HOUR: ${{ github.event.inputs.hour }}
           BOOKING_MINUTES: ${{ github.event.inputs.minutes }}
           ACCOUNT: ${{ github.event.inputs.account }}
+          BOOKING_COURT: ${{ github.event.inputs.court }}
         run: |
           python main.py
 
@@ -80,6 +87,7 @@ jobs:
           name: booking-log
           path: booking.log
           if-no-files-found: ignore
+
       - name: Upload screenshots as artifacts
         if: always()  # Upload even if the script fails
         uses: actions/upload-artifact@v4
