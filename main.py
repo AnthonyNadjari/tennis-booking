@@ -149,18 +149,18 @@ def main():
         booking_url = urlunparse(parsed._replace(query=new_query))
 
         # Wait until specific times to perform actions
-        #timer('19:55')
+        timer('19:55')
 
         # Initialize the WebDriver
         driver = webdriver.Chrome(service=Service(CHROME_DRIVER_PATH), options=options)
         wait = WebDriverWait(driver, 10)
 
         # Login
-        #timer('19:57')
+        timer('19:57')
         initialize()
 
         # Book
-        #timer('20:00')
+        timer('20:00')
         driver.get(booking_url)
 
         
