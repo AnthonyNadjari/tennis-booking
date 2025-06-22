@@ -5,60 +5,80 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
-import os
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import time
-import logging
 from datetime import datetime, timedelta
-
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
+import logging
+import os
 
 # Configuration du logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('tennis_booking.log'),
+        logging.FileHandler('booking.log'),
         logging.StreamHandler()
     ]
 )
-# Environment Variables - keeping your working values as defaults
-username = os.environ.get('TENNIS_USERNAME')
-password = os.environ.get('TENNIS_PASSWORD')
-card_number = os.environ.get('CARD_NUMBER')
-card_expiry = os.environ.get('CARD_EXPIRY')
-card_cvc = os.environ.get('CARD_CVC')
 
-# Date handling - extract day from full date or use default
-booking_date = os.environ.get('BOOKING_DATE')
-if booking_date:
-    day = booking_date.split('-')[2].lstrip('0') or '1'  # Extract day and remove leading zero
-else:
-    day = os.environ.get('BOOKING_DAY')
+# Constants for configuration
+ACCOUNT_NUMBER = os.environ.get('ACCOUNT', '1')  # Default to account 1 if not specified
+USERNAME = os.environ.get('TENNIS_USERNAME2') if ACCOUNT_NUMBER == '2' else os.environ.get('TENNIS_USERNAME')
+PASSWORD = os.environ.get('TENNIS_PASSWORD')
+CARD_NUMBER = os.environ.get('CARD_NUMBER', '5354562794845156')
+CARD_EXPIRY = os.environ.get('CARD_EXPIRY', '04/30')
+CARD_CVC = os.environ.get('CARD_CVC', '666')
+CHROME_DRIVER_PATH = ChromeDriverManager().install()
+DATE = os.environ.get('BOOKING_DATE', '2025-06-28')
+BOOKING_START_HOUR = int(os.environ.get('BOOKING_HOUR', '19'))  # Default to 19:00
+BOOKING_START_MINUTE = int(os.environ.get('BOOKING_MINUTES', '0'))
+COURT = os.environ.get('BOOKING_COURT', 'Court1')  # Default to Court1 if not specified
 
-hours = int(os.environ.get('BOOKING_HOUR'))
-minutes = int(os.environ.get('BOOKING_MINUTES'))
+# Check if username and password are available
+if not USERNAME or not PASSWORD:
+    logging.error("Username or password not defined!")
+    exit(1)
 
-logging.info(f"🎾 Tennis booking for day {day} at {hours:02d}:{minutes:02d}")
-logging.info(f"👤 Username: {username}")
-# Setup Chrome - adapted for GitHub Actions
+# Log account information
+logging.info(f"🔑 Utilisation du compte {'secondaire' if ACCOUNT_NUMBER == '2' else 'principal'} (TENNIS_USERNAME{'2' if ACCOUNT_NUMBER == '2' else ''})")
+
+# Calculate total minutes and format display
+TOTAL_MINUTES = (BOOKING_START_HOUR * 60) + BOOKING_START_MINUTE
+HOUR_STR = f"{BOOKING_START_HOUR:02d}:{BOOKING_START_MINUTE:02d}"
+logging.info(f"Booking for {DATE} at {HOUR_STR}")
+logging.info(f"System minutes: {TOTAL_MINUTES}")
+
+resource_ids = {
+    'Court1': 'ad7d3c7b-9dff-4442-bb18-4761970f11c0',
+    'Court2': 'f942cbed-3f8a-4828-9afc-2c0a23886ffa',
+    'Court3': '7626935c-1e38-49ca-a3ff-52205ed98a81',
+    'Court4': '1d7ac83f-5fdb-4fe4-a743-5383b7a1641f'
+}
+
+start_time = TOTAL_MINUTES
+court = COURT  # Use the selected court
+booking_date = datetime.strptime(DATE, '%Y-%m-%d')
+
+# Configuration Chrome
 options = webdriver.ChromeOptions()
 options.add_argument("--headless")
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
 options.add_argument("--disable-gpu")
-options.page_load_strategy = 'eager'
+options.add_argument("--disable-blink-features=AutomationControlled")
+options.add_experimental_option("excludeSwitches", ["enable-automation"])
+options.add_experimental_option('useAutomationExtension', False)
+options.page_load_strategy = 'eager'  # Load resources only when needed
 
-# Use ChromeDriverManager for GitHub Actions, fallback to local path
-try:
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-except:
-    # Fallback for local development
-    service = Service(executable_path=r'C:\Users\x01376312\Downloads\chromedriver.exe')
-    driver = webdriver.Chrome(service=service, options=options)
+def timer(target_time_str):
+    """
+    Wait until a specific time of day.
 
-wait = WebDriverWait(driver, 10)
-logging.info("✅ Driver initialized")
-def timer(t):
-    target_time = datetime.strptime(t, "%H:%M").replace(
+    Args:
+        target_time_str (str): Time in "HH:MM" format to wait until.
+    """
+    target_time = datetime.strptime(target_time_str, "%H:%M").replace(
         year=datetime.now().year,
         month=datetime.now().month,
         day=datetime.now().day
@@ -68,180 +88,98 @@ def timer(t):
     if wait_seconds > 0:
         time.sleep(wait_seconds)
 
-def enter_data(xpath, keys):
-    wait.until(EC.visibility_of_element_located((By.XPATH, xpath)))
-    driver.find_element(By.XPATH, xpath).send_keys(keys, Keys.RETURN)
+def enter_data(element_xpath, input_text):
+    """
+    Enter data into a field specified by an XPath and send a return key.
 
-def click_on(xpath):
-    wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
-    driver.find_element(By.XPATH, xpath).click()
-
-def take_screenshot(name):
+    Args:
+        element_xpath (str): XPath of the input field.
+        input_text (str): Text to input into the field.
+    """
     try:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"screenshot_{name}_{timestamp}.png"
-        driver.save_screenshot(filename)
-        logging.info(f"📸 Screenshot saved: {filename}")
+        wait.until(EC.element_to_be_clickable((By.XPATH, element_xpath)))
+        driver.find_element(By.XPATH, element_xpath).send_keys(input_text, Keys.RETURN)
+    except (NoSuchElementException, TimeoutException) as e:
+        logging.error(f"Error entering data: {e}")
+
+def click_on(element_xpath):
+    """
+    Click on an element specified by an XPath.
+
+    Args:
+        element_xpath (str): XPath of the element to click.
+    """
+    try:
+        wait.until(EC.element_to_be_clickable((By.XPATH, element_xpath)))
+        driver.find_element(By.XPATH, element_xpath).click()
+    except (NoSuchElementException, TimeoutException) as e:
+        logging.error(f"Error clicking element: {e}")
+
+def initialize():
+    """
+    Initialize the webdriver, navigate to the login page, and log in.
+    """
+    try:
+        driver.get(r"https://clubspark.lta.org.uk/SouthwarkPark/Account/SignIn?returnUrl=https%3a%2f%2fclubspark.lta.org.uk%2fSouthwarkPark%2fBooking%2fBookByDate")
+        click_on('/html/body/div[3]/div[1]/div[2]/div[1]/div[2]/form/button')
+        enter_data('//*[@id="154:0"]', USERNAME)
+        enter_data('//*[@id="input-2"]', PASSWORD)
+        wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.osano-cm-dialog__close.osano-cm-close')))
+        driver.find_element(By.CSS_SELECTOR, 'button.osano-cm-dialog__close.osano-cm-close').click()
     except Exception as e:
-        logging.error(f"Screenshot error: {e}")
+        logging.error(f"Error during initialization: {e}")
 
+def main():
+    global driver, wait
+    try:
+        # Booking time setup
+        parsed = urlparse(SAMPLE_URL)
+        query = parse_qs(parsed.query)
+        query["Date"] = [booking_date.strftime(format='%Y-%m-%d')]
+        query["StartTime"] = [str(start_time)]
+        query["EndTime"] = [str(start_time + 60)]
+        query["ResourceID"] = [resource_ids[court]]  # Use the selected court
+        new_query = urlencode(query, doseq=True)
+        booking_url = urlunparse(parsed._replace(query=new_query))
 
-try:
-    ## Login (EXACT SAME)
-    logging.info("🔐 Starting login process...")
-    driver.get(
-        r"https://clubspark.lta.org.uk/SouthwarkPark/Account/SignIn?returnUrl=https%3a%2f%2fclubspark.lta.org.uk%2fSouthwarkPark%2fBooking%2fBookByDate")
-    click_on('/html/body/div[3]/div[1]/div[2]/div[1]/div[2]/form/button')
-    enter_data('//*[@id="154:0"]', username)
-    enter_data('//*[@id="input-2"]', password)
-    logging.info("✅ Login completed")
+        # Wait until specific times to perform actions
+        #timer('19:55')
 
-    ## Select date (EXACT SAME)
-    logging.info(f"📅 Selecting day: {day}")
-    click_on('//*[@id="book-by-date-view"]/div/div[1]/div/div[1]/button')
-    dates = driver.find_elements(By.CSS_SELECTOR, 'td[data-handler="selectDay"]')
-    for d in dates:
-        if d.text == day:
-            d.click()
-            break
-    logging.info("✅ Date selected")
+        # Initialize the WebDriver
+        driver = webdriver.Chrome(service=Service(CHROME_DRIVER_PATH), options=options)
+        wait = WebDriverWait(driver, 10)
 
-    ### COURT FINDING WITH RETRY LOGIC (EXACT SAME) ###
-    driver.refresh()
-    wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, 'a.book-interval')))
+        # Login
+        #timer('19:57')
+        initialize()
 
-    # Calculate target time in minutes
-    target_time_minutes = hours * 60 + minutes
-    hour_str = f"{hours:02d}:{minutes:02d}"
-    logging.info(f"🔍 Looking for slot at {hour_str} ({target_time_minutes} minutes)")
+        # Book
+        #timer('20:00')
+        driver.get(booking_url)
 
-    # Retry logic - max 5 minutes
-    start_time = time.time()
-    max_duration = 5 * 60  # 5 minutes in seconds
-    attempt = 0
-    slot_found = False
+        # Pay
+        wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="paynow"]')))
+        click_on('//*[@id="paynow"]')
+        wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="cs-stripe-elements-card-number"]/div/iframe')))
+        click_on('/html/body/div[7]/div/div/div/div[1]/form/div[1]/div')
+        enter_data('//*[@id="cs-stripe-elements-card-number"]/div/iframe', '')
+        enter_data('//*[@id="cs-stripe-elements-card-number"]/div/iframe', CARD_NUMBER)
+        click_on('/html/body/div[7]/div/div/div/div[1]/form/div[2]/div[1]/div')
+        enter_data('//*[@id="cs-stripe-elements-card-expiry"]/div/iframe', '')
+        enter_data('//*[@id="cs-stripe-elements-card-expiry"]/div/iframe', CARD_EXPIRY)
+        click_on('/html/body/div[7]/div/div/div/div[1]/form/div[2]/div[2]/div')
+        enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', '')
+        enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', CARD_CVC)
+        click_on('//*[@id="cs-stripe-elements-submit-button"]')
 
-    while time.time() - start_time < max_duration:
-        attempt += 1
-        elapsed = int(time.time() - start_time)
-        logging.info(f"🔄 Attempt {attempt} (elapsed: {elapsed}s)")
+    except Exception as e:
+        logging.error(f"An error occurred in the main flow: {e}")
+    finally:
+        if 'driver' in globals() and driver:
+            driver.quit()
 
-        # Try direct XPath targeting first
-        xpath_query = f"//a[@class='book-interval not-booked' and contains(@data-test-id, '|{target_time_minutes}')]"
+# Define SAMPLE_URL if not already defined from the previous script context
+SAMPLE_URL = 'https://clubspark.lta.org.uk/SouthwarkPark/Booking/Book?Contacts%5B0%5D.IsPrimary=true&Contacts%5B0%5D.IsJunior=false&Contacts%5B0%5D.IsPlayer=true&ResourceID=ad7d3c7b-9dff-4442-bb18-4761970f11c0&Date=2025-06-28&SessionID=c3791901-4d64-48f5-949d-85d01c4633b9&StartTime=1140&EndTime=1200&Category=0&SubCategory=0&VenueID=4123ed12-8dd6-4f48-a706-6ab2fbde16ba&ResourceGroupID=4123ed12-8dd6-4f48-a706-6ab2fbde16ba'
 
-        try:
-            target_slot = WebDriverWait(driver, 2).until(
-                EC.element_to_be_clickable((By.XPATH, xpath_query))
-            )
-            logging.info(f"🎯 SLOT FOUND DIRECTLY at {hour_str}!")
-            target_slot.click()
-            logging.info("✅ Clicked!")
-            slot_found = True
-            break  # Exit the retry loop
-
-        except:
-            logging.info("⚠️ Direct search failed, trying fallback method...")
-
-            # Fallback: search through all available slots
-            booking_links = driver.find_elements(By.CSS_SELECTOR, "a.book-interval.not-booked")
-
-            for link in booking_links:
-                data_test_id = link.get_attribute('data-test-id') or ""
-
-                if '|' in data_test_id:
-                    parts = data_test_id.split('|')
-                    if len(parts) >= 3:
-                        try:
-                            slot_time = int(parts[2])
-                            if slot_time == target_time_minutes:
-                                logging.info(f"🎯 SLOT FOUND at {hour_str}!")
-                                link.click()
-                                slot_found = True
-                                break
-                        except:
-                            continue
-
-            if slot_found:
-                break  # Exit the retry loop
-
-            # If no slot found and still have time, refresh and try again
-            remaining_time = max_duration - (time.time() - start_time)
-            if remaining_time > 10:  # Only refresh if we have more than 10 seconds left
-                logging.info(f"❌ No slot found, refreshing... ({int(remaining_time)}s remaining)")
-                driver.refresh()
-                time.sleep(0.5)  # Small delay between refreshes
-                try:
-                    wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, 'a.book-interval')))
-                except:
-                    logging.info("⚠️ Page load timeout, continuing...")
-            else:
-                logging.info("⏰ Time limit reached, stopping search")
-                break
-
-    # Check if slot was found
-    if not slot_found:
-        logging.error(f"❌ No slot found for {hour_str} after 5 minutes")
-        take_screenshot("no_slot_found")
-        driver.quit()
-        exit()
-
-    # Booking completion (EXACT SAME)
-    click_on('/html/body/div[8]/div/div/div/div[1]/form/div[1]/div[1]/div[2]/div/div/div/span')
-    click_on('/html/body/span/span/span[2]/ul/li[2]')
-    click_on('//*[@id="submit-booking"]')
-    click_on('//*[@id="paynow"]')
-    time.sleep(0.5)
-
-    # Payment form (EXACT SAME)
-    enter_data('//*[@id="cs-stripe-elements-card-number"]/div/iframe', '')
-    enter_data('//*[@id="cs-stripe-elements-card-number"]/div/iframe', '')
-    enter_data('//*[@id="cs-stripe-elements-card-number"]/div/iframe', '')
-    enter_data('//*[@id="cs-stripe-elements-card-number"]/div/iframe', card_number)
-    enter_data('//*[@id="cs-stripe-elements-card-expiry"]/div/iframe', '')
-    enter_data('//*[@id="cs-stripe-elements-card-expiry"]/div/iframe', '')
-    enter_data('//*[@id="cs-stripe-elements-card-expiry"]/div/iframe', '')
-    enter_data('//*[@id="cs-stripe-elements-card-expiry"]/div/iframe', card_expiry)
-    enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', '')
-    enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', '')
-    enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', '')
-    enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', card_cvc)
-
-
-    logging.info("💳 Attempting to submit payment...")
-    click_on('//*[@id="cs-stripe-elements-submit-button"]')
-    logging.info("✅ Payment button clicked successfully")
-    
-    # Wait and check what happens
-    for i in range(10):  # Check for 10 seconds
-        time.sleep(0.5)
-        current_url = driver.current_url
-        logging.info(f"⏰ Second {i + 1}: Current URL: {current_url}")
-    
-        # Check if we're on a success/confirmation page
-        if "success" in current_url.lower() or "confirmation" in current_url.lower() or "thank" in current_url.lower():
-            logging.info("🎉 Payment appears successful - on confirmation page!")
-            break
-    
-        # Check if still on payment page
-        if "payment" in current_url.lower() or "stripe" in current_url.lower():
-            logging.info("⚠️ Still on payment page...")
-    
-        # Check page content for success messages
-        page_source = driver.page_source.lower()
-        if "booking confirmed" in page_source or "payment successful" in page_source:
-            logging.info("🎉 Success message found on page!")
-            time.sleep(5)
-            break
-    
-    logging.info("🎉 Booking process completed!")
-
-
-
-except Exception as e:
-    logging.error(f"❌ Error occurred: {e}")
-    take_screenshot("error")
-finally:
-    time.sleep(5)
-
-
-    logging.info("✅ Browser closed")
+if __name__ == "__main__":
+    main()
