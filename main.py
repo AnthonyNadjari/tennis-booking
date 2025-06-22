@@ -51,7 +51,7 @@ CARD_CVC = os.environ.get('CARD_CVC')
 CHROME_DRIVER_PATH = ChromeDriverManager().install()
 DATE = os.environ.get('BOOKING_DATE')
 BOOKING_START_HOUR = int(os.environ.get('BOOKING_HOUR'))  # Default to 19:00
-BOOKING_START_MINUTE = int(os.environ.get('BOOKING_MINUTES')
+BOOKING_START_MINUTE = int(os.environ.get('BOOKING_MINUTES'))
 COURT = os.environ.get('BOOKING_COURT')  # Default to Court1 if not specified
 
 # Check if username and password are available
