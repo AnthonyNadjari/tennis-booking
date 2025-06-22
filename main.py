@@ -12,18 +12,27 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 import logging
 import os
 
-
-import logging
-
 def take_screenshot(name):
     try:
+        # Set the window size to a large dimension to capture the full page
+        driver.set_window_size(1920, 1080)  # You can adjust the size as needed
+
+        # Create a timestamp for the filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"screenshot_{name}_{timestamp}.png"
+
+        # Save the screenshot
         driver.save_screenshot(filename)
+
+        # Log the action
         logging.info(f"📸 Screenshot sauvegardé: {filename}")
     except Exception as e:
+        # Log any errors that occur during the screenshot process
         logging.error(f"Erreur screenshot: {e}")
 
+# Example usage:
+# Assuming `driver` is your WebDriver instance
+# take_screenshot(driver, "example_name")
 
 
 # Configuration du logging
@@ -142,7 +151,7 @@ def initialize():
         enter_data('//*[@id="input-2"]', PASSWORD)
 
         print("password entered")
-        take_screenshot("we entered credentials")
+        take_screenshot("we entered mot de passe et username")
 
         
         wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.osano-cm-dialog__close.osano-cm-close')))
@@ -201,10 +210,11 @@ def main():
         enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', '')
         enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', CARD_CVC)
 
-        take_screenshot("we entered the credentials")
+        take_screenshot("we entered the carte bleue")
 
         
         click_on('//*[@id="cs-stripe-elements-submit-button"]')
+        take_screenshot("on a payé apres avoir entré les infos ")
 
     except Exception as e:
         logging.error(f"An error occurred in the main flow: {e}")
