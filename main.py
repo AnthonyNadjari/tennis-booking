@@ -15,29 +15,14 @@ import os
 
 import logging
 
-def take_screenshot(driver, filename_prefix="screenshot"):
-    """
-    Take a screenshot and save it to a file.
-
-    Args:
-        driver: The WebDriver instance.
-        filename_prefix (str): Prefix for the screenshot filename.
-    """
+def take_screenshot(name):
     try:
-        # Create a timestamp for the filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{filename_prefix}_{timestamp}.png"
-
-        # Save the screenshot
+        filename = f"screenshot_{name}_{timestamp}.png"
         driver.save_screenshot(filename)
-
-        # Log the action
-        logging.info(f"Screenshot saved as {filename}")
-        return filename
+        logging.info(f"📸 Screenshot sauvegardé: {filename}")
     except Exception as e:
-        # Log any errors that occur during the screenshot process
-        logging.error(f"Error taking screenshot: {e}")
-        return None
+        logging.error(f"Erreur screenshot: {e}")
 
 
 
@@ -151,19 +136,19 @@ def initialize():
     try:
         driver.get(r"https://clubspark.lta.org.uk/SouthwarkPark/Account/SignIn?returnUrl=https%3a%2f%2fclubspark.lta.org.uk%2fSouthwarkPark%2fBooking%2fBookByDate")
         print("linked accessed")
-        take_screenshot(driver,"we are on the logging page")
+        take_screenshot("we are on the logging page")
         click_on('/html/body/div[3]/div[1]/div[2]/div[1]/div[2]/form/button')
         enter_data('//*[@id="154:0"]', USERNAME)
         enter_data('//*[@id="input-2"]', PASSWORD)
 
         print("password entered")
-        take_screenshot(driver,"we entered credentials")
+        take_screenshot("we entered credentials")
 
         
         wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.osano-cm-dialog__close.osano-cm-close')))
         driver.find_element(By.CSS_SELECTOR, 'button.osano-cm-dialog__close.osano-cm-close').click()
         print("button clicked")
-        take_screenshot(driver,"we clicked and logged in")
+        take_screenshot("we clicked and logged in")
         
 
     except Exception as e:
