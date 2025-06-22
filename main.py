@@ -182,9 +182,14 @@ def main():
         #timer('20:00')
         driver.get(booking_url)
 
+        take_screenshot("we reached the page of booking")
+        
         # Pay
         wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="paynow"]')))
         click_on('//*[@id="paynow"]')
+
+        take_screenshot("we clicked on pay now")
+
         wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="cs-stripe-elements-card-number"]/div/iframe')))
         click_on('/html/body/div[7]/div/div/div/div[1]/form/div[1]/div')
         enter_data('//*[@id="cs-stripe-elements-card-number"]/div/iframe', '')
@@ -195,6 +200,10 @@ def main():
         click_on('/html/body/div[7]/div/div/div/div[1]/form/div[2]/div[2]/div')
         enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', '')
         enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', CARD_CVC)
+
+        take_screenshot("we entered the credentials")
+
+        
         click_on('//*[@id="cs-stripe-elements-submit-button"]')
 
     except Exception as e:
