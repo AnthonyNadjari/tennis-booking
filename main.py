@@ -215,7 +215,7 @@ def main():
         
         click_on('//*[@id="cs-stripe-elements-submit-button"]')
         take_screenshot("on a payé apres avoir entré les infos ")
-
+        time.sleep(5)
     except Exception as e:
         logging.error(f"An error occurred in the main flow: {e}")
     finally:
