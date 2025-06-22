@@ -12,6 +12,9 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 import logging
 import os
 
+
+import logging
+
 def take_screenshot(driver, filename_prefix="screenshot"):
     """
     Take a screenshot and save it to a file.
@@ -21,14 +24,21 @@ def take_screenshot(driver, filename_prefix="screenshot"):
         filename_prefix (str): Prefix for the screenshot filename.
     """
     try:
+        # Create a timestamp for the filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{filename_prefix}_{timestamp}.png"
+
+        # Save the screenshot
         driver.save_screenshot(filename)
+
+        # Log the action
         logging.info(f"Screenshot saved as {filename}")
         return filename
     except Exception as e:
+        # Log any errors that occur during the screenshot process
         logging.error(f"Error taking screenshot: {e}")
         return None
+
 
 
 # Configuration du logging
