@@ -12,6 +12,14 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 import logging
 import os
 
+import time
+
+# Heure locale
+now = datetime.now()
+
+# Fuseau horaire local (par nom)
+local_timezone = time.tzname  # tuple (standard_time, daylight_time)
+print("Fuseau horaire local :", local_timezone)
 
 # Configuration du logging
 logging.basicConfig(
