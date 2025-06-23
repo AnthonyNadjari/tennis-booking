@@ -173,7 +173,7 @@ def main():
 
         # Book
         # timer('19:00')
-        # timer('19:22')
+        timer('20:30')
         print("booking_url")
         print(booking_url)
         driver.get(booking_url)
