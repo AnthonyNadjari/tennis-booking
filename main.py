@@ -8,7 +8,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import time
 from datetime import datetime, timedelta
-from selenium.common.exceptions import NoSuchElementException, TimeoutException, ElementClickInterceptedException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 import logging
 import os
 
@@ -35,13 +35,17 @@ BOOKING_START_HOUR = int(os.environ.get('BOOKING_HOUR'))
 BOOKING_START_MINUTE = int(os.environ.get('BOOKING_MINUTES'))
 COURT = os.environ.get('BOOKING_COURT')
 
+# Check if we're running in CI/CD
+IS_CI = os.environ.get('CI', 'false').lower() == 'true'
+
 # Check if username and password are available
 if not USERNAME or not PASSWORD:
     logging.error("Username or password not defined!")
     exit(1)
 
 # Log account information
-logging.info(f"🔑 Using account {'secondary' if ACCOUNT_NUMBER == '2' else 'primary'} (TENNIS_USERNAME{'2' if ACCOUNT_NUMBER == '2' else ''})")
+logging.info(f"🔑 Utilisation du compte {'secondaire' if ACCOUNT_NUMBER == '2' else 'principal'} (TENNIS_USERNAME{'2' if ACCOUNT_NUMBER == '2' else ''})")
+logging.info(f"Running in {'CI/CD' if IS_CI else 'local'} environment")
 
 # Calculate total minutes and format display
 TOTAL_MINUTES = (BOOKING_START_HOUR * 60) + BOOKING_START_MINUTE
@@ -60,24 +64,25 @@ start_time = TOTAL_MINUTES
 court = COURT
 booking_date = datetime.strptime(DATE, '%Y-%m-%d')
 
-# Chrome configuration with improved settings
+# Configuration Chrome - only use headless in CI
 options = webdriver.ChromeOptions()
-options.add_argument("--headless")
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
-options.add_argument("--disable-gpu")
-options.add_argument("--disable-blink-features=AutomationControlled")
-options.add_experimental_option("excludeSwitches", ["enable-automation"])
-options.add_experimental_option('useAutomationExtension', False)
-options.page_load_strategy = 'eager'
-# Add user agent to appear more like a real browser
-options.add_argument('user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+if IS_CI:
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")  # Important for headless
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
 
-# Sample URL template
-SAMPLE_URL = 'https://clubspark.lta.org.uk/SouthwarkPark/Booking/Book?Contacts%5B0%5D.IsPrimary=true&Contacts%5B0%5D.IsJunior=false&Contacts%5B0%5D.IsPlayer=true&ResourceID=ad7d3c7b-9dff-4442-bb18-4761970f11c0&Date=2025-06-28&SessionID=c3791901-4d64-48f5-949d-85d01c4633b9&StartTime=1140&EndTime=1200&Category=0&SubCategory=0&VenueID=4123ed12-8dd6-4f48-a706-6ab2fbde16ba&ResourceGroupID=4123ed12-8dd6-4f48-a706-6ab2fbde16ba'
+# Always use these options
+options.page_load_strategy = 'normal'  # Changed from 'eager' to ensure full page load
 
 def timer(target_time_str):
-    """Wait until a specific time of day."""
+    """
+    Wait until a specific time of day.
+    """
     target_time = datetime.strptime(target_time_str, "%H:%M").replace(
         year=datetime.now().year,
         month=datetime.now().month,
@@ -86,247 +91,202 @@ def timer(target_time_str):
     now = datetime.now()
     wait_seconds = (target_time - now).total_seconds()
     if wait_seconds > 0:
-        logging.info(f"Waiting {wait_seconds:.0f} seconds until {target_time_str}")
         time.sleep(wait_seconds)
 
-def handle_cookie_consent(driver, wait):
-    """Handle cookie consent banners that might appear."""
-    cookie_selectors = [
-        'button.osano-cm-dialog__close.osano-cm-close',
-        'button.osano-cm-deny',
-        'button.osano-cm-accept-all',
-        'button[aria-label="Close"]',
-        'button[title="Close"]'
-    ]
-    
-    for selector in cookie_selectors:
-        try:
-            cookie_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)), timeout=3)
-            cookie_button.click()
-            logging.info(f"Clicked cookie consent button: {selector}")
-            time.sleep(1)  # Give time for the banner to disappear
-            return True
-        except (TimeoutException, NoSuchElementException):
-            continue
-    
-    # Try to click anywhere on the page to dismiss overlays
+def handle_cookie_consent():
+    """
+    Handle cookie consent banner - try multiple methods
+    """
     try:
-        driver.execute_script("document.body.click();")
-        time.sleep(0.5)
+        # Method 1: Close button
+        close_button = driver.find_element(By.CSS_SELECTOR, 'button.osano-cm-dialog__close')
+        close_button.click()
+        logging.info("Closed cookie banner via close button")
+        time.sleep(1)
+        return True
     except:
         pass
     
-    return False
-
-def safe_click(driver, wait, element_xpath, max_retries=3):
-    """Safely click an element with retry logic."""
-    for attempt in range(max_retries):
+    try:
+        # Method 2: Deny button
+        deny_button = driver.find_element(By.CSS_SELECTOR, 'button.osano-cm-deny')
+        deny_button.click()
+        logging.info("Closed cookie banner via deny button")
+        time.sleep(1)
+        return True
+    except:
+        pass
+    
+    try:
+        # Method 3: Accept all (sometimes it's the only option)
+        accept_button = driver.find_element(By.CSS_SELECTOR, 'button.osano-cm-accept-all')
+        accept_button.click()
+        logging.info("Accepted cookies")
+        time.sleep(1)
+        return True
+    except:
+        pass
+    
+    # If headless, try JavaScript click
+    if IS_CI:
         try:
-            element = wait.until(EC.element_to_be_clickable((By.XPATH, element_xpath)))
-            driver.execute_script("arguments[0].scrollIntoView(true);", element)
-            time.sleep(0.5)
-            
-            # Try JavaScript click first
-            driver.execute_script("arguments[0].click();", element)
+            driver.execute_script("""
+                var buttons = document.querySelectorAll('button');
+                for (var i = 0; i < buttons.length; i++) {
+                    if (buttons[i].textContent.includes('Deny') || 
+                        buttons[i].textContent.includes('Close') ||
+                        buttons[i].className.includes('osano')) {
+                        buttons[i].click();
+                        break;
+                    }
+                }
+            """)
+            time.sleep(1)
+            logging.info("Handled cookie banner via JavaScript")
             return True
-            
-        except ElementClickInterceptedException:
-            logging.warning(f"Click intercepted on attempt {attempt + 1}, handling overlays...")
-            handle_cookie_consent(driver, wait)
-            
-            # Try regular click as fallback
-            try:
-                element = driver.find_element(By.XPATH, element_xpath)
-                element.click()
-                return True
-            except:
-                pass
-                
-        except Exception as e:
-            logging.error(f"Error clicking element on attempt {attempt + 1}: {e}")
+        except:
+            pass
     
     return False
 
-def enter_data(driver, wait, element_xpath, input_text, use_js=False):
-    """Enter data into a field with improved error handling."""
+def enter_data(element_xpath, input_text):
+    """
+    Enter data into a field specified by an XPath and send a return key.
+    """
     try:
-        element = wait.until(EC.presence_of_element_located((By.XPATH, element_xpath)))
-        driver.execute_script("arguments[0].scrollIntoView(true);", element)
-        time.sleep(0.5)
-        
-        if use_js:
-            # Use JavaScript to set value directly
-            driver.execute_script(f"arguments[0].value = '{input_text}';", element)
-            driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", element)
-        else:
-            element.clear()
-            element.send_keys(input_text)
-            element.send_keys(Keys.RETURN)
-            
-        return True
-        
-    except Exception as e:
+        wait.until(EC.element_to_be_clickable((By.XPATH, element_xpath)))
+        element = driver.find_element(By.XPATH, element_xpath)
+        element.clear()
+        element.send_keys(input_text)
+        element.send_keys(Keys.RETURN)
+    except (NoSuchElementException, TimeoutException) as e:
         logging.error(f"Error entering data: {e}")
-        return False
 
-def enter_iframe_data(driver, wait, iframe_xpath, input_text):
-    """Enter data into an iframe field (for Stripe payment)."""
+def click_on(element_xpath):
+    """
+    Click on an element specified by an XPath.
+    """
     try:
-        # Switch to iframe
-        iframe = wait.until(EC.presence_of_element_located((By.XPATH, iframe_xpath)))
-        driver.switch_to.frame(iframe)
-        
-        # Find input field inside iframe
-        input_field = wait.until(EC.presence_of_element_located((By.TAG_NAME, "input")))
-        input_field.clear()
-        input_field.send_keys(input_text)
-        
-        # Switch back to main content
-        driver.switch_to.default_content()
-        return True
-        
-    except Exception as e:
-        logging.error(f"Error entering iframe data: {e}")
-        driver.switch_to.default_content()
-        return False
+        wait.until(EC.element_to_be_clickable((By.XPATH, element_xpath)))
+        element = driver.find_element(By.XPATH, element_xpath)
+        if IS_CI:
+            # Use JavaScript click in headless mode
+            driver.execute_script("arguments[0].click();", element)
+        else:
+            element.click()
+    except (NoSuchElementException, TimeoutException) as e:
+        logging.error(f"Error clicking element: {e}")
 
-def initialize(driver, wait):
-    """Initialize the webdriver, navigate to the login page, and log in."""
+def initialize():
+    """
+    Initialize the webdriver, navigate to the login page, and log in.
+    """
     try:
-        # Navigate to login page
-        driver.get("https://clubspark.lta.org.uk/SouthwarkPark/Account/SignIn?returnUrl=https%3a%2f%2fclubspark.lta.org.uk%2fSouthwarkPark%2fBooking%2fBookByDate")
-        time.sleep(2)
+        driver.get(r"https://clubspark.lta.org.uk/SouthwarkPark/Account/SignIn?returnUrl=https%3a%2f%2fclubspark.lta.org.uk%2fSouthwarkPark%2fBooking%2fBookByDate")
+        time.sleep(3)  # Give page time to load
         
-        # Handle cookie consent if it appears
-        handle_cookie_consent(driver, wait)
+        # Handle cookie consent first
+        handle_cookie_consent()
         
-        # Click on login button
-        login_button_xpath = '/html/body/div[3]/div[1]/div[2]/div[1]/div[2]/form/button'
-        if not safe_click(driver, wait, login_button_xpath):
-            # Try alternative selector
-            safe_click(driver, wait, '//button[contains(text(), "Sign in") or contains(text(), "Log in")]')
+        # Click login button
+        click_on('/html/body/div[3]/div[1]/div[2]/div[1]/div[2]/form/button')
+        time.sleep(1)
         
-        time.sleep(2)
-        
-        # Enter username - note the ID might be dynamic
-        username_entered = False
-        username_selectors = [
-            '//*[@id="154:0"]',
-            '//input[@type="email"]',
-            '//input[@name="username"]',
-            '//input[contains(@placeholder, "Email")]'
-        ]
-        
-        for selector in username_selectors:
-            if enter_data(driver, wait, selector, USERNAME):
-                username_entered = True
-                break
-        
-        if not username_entered:
-            logging.error("Failed to enter username")
-            return False
-            
-        # Enter password
-        password_selectors = [
-            '//*[@id="input-2"]',
-            '//input[@type="password"]',
-            '//input[@name="password"]',
-            '//input[contains(@placeholder, "Password")]'
-        ]
-        
-        for selector in password_selectors:
-            if enter_data(driver, wait, selector, PASSWORD):
-                break
+        # Enter credentials
+        enter_data('//*[@id="154:0"]', USERNAME)
+        enter_data('//*[@id="input-2"]', PASSWORD)
         
         # Wait for login to complete
         time.sleep(3)
         
-        # Handle any post-login popups
-        handle_cookie_consent(driver, wait)
-        
-        logging.info("Login successful")
-        return True
-        
     except Exception as e:
         logging.error(f"Error during initialization: {e}")
         # Take screenshot for debugging
-        try:
-            driver.save_screenshot("login_error.png")
-        except:
-            pass
-        return False
+        driver.save_screenshot("error_init.png")
 
 def main():
-    driver = None
+    global driver, wait
     try:
-        # Build booking URL
+        # Booking time setup
         parsed = urlparse(SAMPLE_URL)
         query = parse_qs(parsed.query)
-        query["Date"] = [booking_date.strftime('%Y-%m-%d')]
+        query["Date"] = [booking_date.strftime(format='%Y-%m-%d')]
         query["StartTime"] = [str(start_time)]
         query["EndTime"] = [str(start_time + 60)]
         query["ResourceID"] = [resource_ids[court]]
         new_query = urlencode(query, doseq=True)
         booking_url = urlunparse(parsed._replace(query=new_query))
         
-        logging.info(f"Booking URL: {booking_url}")
-        
-        # Initialize WebDriver
+        # Wait until specific times to perform actions (uncomment if needed)
+        # timer('18:55')
+        # timer('18:57')
+        # timer('19:00')
+
+        # Initialize the WebDriver
         driver = webdriver.Chrome(service=Service(CHROME_DRIVER_PATH), options=options)
-        wait = WebDriverWait(driver, 15)  # Increased timeout
-        
+        wait = WebDriverWait(driver, 10)
+
         # Login
-        if not initialize(driver, wait):
-            logging.error("Failed to login")
-            return
-        
-        # Navigate to booking page
+        initialize()
+
+        # Book
         driver.get(booking_url)
+        time.sleep(3)  # Give page time to load
+        
+        # Handle cookie consent again if it appears
+        handle_cookie_consent()
+        
+        # Pay
+        wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="paynow"]')))
+        click_on('//*[@id="paynow"]')
         time.sleep(2)
+
+        # Payment process - wait for Stripe elements to load
+        wait.until(EC.presence_of_element_located((By.XPATH, '//*[@id="cs-stripe-elements-card-number"]/div/iframe')))
+        time.sleep(2)  # Give Stripe time to fully load
         
-        # Click pay now button
-        if not safe_click(driver, wait, '//*[@id="paynow"]'):
-            logging.error("Failed to click pay now button")
-            return
-        
-        time.sleep(2)
-        
-        # Payment process with Stripe
-        logging.info("Entering payment details...")
-        
+        # Enter card details - Stripe uses iframes
         # Card number
-        if not enter_iframe_data(driver, wait, '//*[@id="cs-stripe-elements-card-number"]/div/iframe', CARD_NUMBER):
-            logging.error("Failed to enter card number")
+        card_frame = driver.find_element(By.XPATH, '//*[@id="cs-stripe-elements-card-number"]/div/iframe')
+        driver.switch_to.frame(card_frame)
+        card_input = driver.find_element(By.TAG_NAME, 'input')
+        card_input.send_keys(CARD_NUMBER)
+        driver.switch_to.default_content()
         
         # Card expiry
-        if not enter_iframe_data(driver, wait, '//*[@id="cs-stripe-elements-card-expiry"]/div/iframe', CARD_EXPIRY):
-            logging.error("Failed to enter card expiry")
+        expiry_frame = driver.find_element(By.XPATH, '//*[@id="cs-stripe-elements-card-expiry"]/div/iframe')
+        driver.switch_to.frame(expiry_frame)
+        expiry_input = driver.find_element(By.TAG_NAME, 'input')
+        expiry_input.send_keys(CARD_EXPIRY)
+        driver.switch_to.default_content()
         
         # Card CVC
-        if not enter_iframe_data(driver, wait, '//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', CARD_CVC):
-            logging.error("Failed to enter card CVC")
+        cvc_frame = driver.find_element(By.XPATH, '//*[@id="cs-stripe-elements-card-cvc"]/div/iframe')
+        driver.switch_to.frame(cvc_frame)
+        cvc_input = driver.find_element(By.TAG_NAME, 'input')
+        cvc_input.send_keys(CARD_CVC)
+        driver.switch_to.default_content()
         
         # Submit payment
-        if safe_click(driver, wait, '//*[@id="cs-stripe-elements-submit-button"]'):
-            logging.info("Payment submitted successfully")
-        else:
-            logging.error("Failed to submit payment")
+        time.sleep(1)
+        click_on('//*[@id="cs-stripe-elements-submit-button"]')
         
-        # Wait for confirmation
         time.sleep(5)
+        logging.info("Booking completed!")
         
-        # Take screenshot of final page
-        driver.save_screenshot("booking_complete.png")
+        # Take success screenshot
+        driver.save_screenshot("booking_success.png")
         
     except Exception as e:
         logging.error(f"An error occurred in the main flow: {e}")
-        if driver:
-            driver.save_screenshot("error_screenshot.png")
+        driver.save_screenshot("error_main.png")
     finally:
-        if driver:
-            time.sleep(5)
-            driver.quit()
+        time.sleep(5)
+        driver.quit()
         logging.info("Done!")
 
-if __name__ == "__main__":
+# Define SAMPLE_URL
+SAMPLE_URL = 'https://clubspark.lta.org.uk/SouthwarkPark/Booking/Book?Contacts%5B0%5D.IsPrimary=true&Contacts%5B0%5D.IsJunior=false&Contacts%5B0%5D.IsPlayer=true&ResourceID=ad7d3c7b-9dff-4442-bb18-4761970f11c0&Date=2025-06-28&SessionID=c3791901-4d64-48f5-949d-85d01c4633b9&StartTime=1140&EndTime=1200&Category=0&SubCategory=0&VenueID=4123ed12-8dd6-4f48-a706-6ab2fbde16ba&ResourceGroupID=4123ed12-8dd6-4f48-a706-6ab2fbde16ba'
+
+if __name__ == "__main__":    
     main()
