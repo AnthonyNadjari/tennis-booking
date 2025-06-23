@@ -147,14 +147,12 @@ def main():
         query["ResourceID"] = [resource_ids[court]]  # Use the selected court
         new_query = urlencode(query, doseq=True)
         booking_url = urlunparse(parsed._replace(query=new_query))
-        import time
     
         # Heure locale
         now = datetime.now()
         
         # Fuseau horaire local (par nom)
-        local_timezone = time.tzname  # tuple (standard_time, daylight_time)
-        logging.info("Fuseau horaire local :", local_timezone)
+        logging.info("Fuseau horaire local :", now)
     
         # Wait until specific times to perform actions
         timer('19:55')
