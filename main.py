@@ -23,17 +23,17 @@ logging.basicConfig(
 )
 
 # Constants for configuration
-ACCOUNT_NUMBER = os.environ.get('ACCOUNT', '1')  # Default to account 1 if not specified
-USERNAME = os.environ.get('TENNIS_USERNAME2',"anthonadj92") if ACCOUNT_NUMBER == '2' else os.environ.get('TENNIS_USERNAME',"anthonadj")
-PASSWORD = os.environ.get('TENNIS_PASSWORD',"SorLouise2!")
-CARD_NUMBER = os.environ.get('CARD_NUMBER',99999)
-CARD_EXPIRY = os.environ.get('CARD_EXPIRY',0)
-CARD_CVC = os.environ.get('CARD_CVC',512)
+ACCOUNT_NUMBER = os.environ.get('ACCOUNT')  # Default to account 1 if not specified
+USERNAME = os.environ.get('TENNIS_USERNAME2') if ACCOUNT_NUMBER == '2' else os.environ.get('TENNIS_USERNAME')
+PASSWORD = os.environ.get('TENNIS_PASSWORD')
+CARD_NUMBER = os.environ.get('CARD_NUMBER')
+CARD_EXPIRY = os.environ.get('CARD_EXPIRY')
+CARD_CVC = os.environ.get('CARD_CVC')
 CHROME_DRIVER_PATH = ChromeDriverManager().install()
-DATE = os.environ.get('BOOKING_DATE',"2025-06-30")
-BOOKING_START_HOUR = int(os.environ.get('BOOKING_HOUR',17))  # Default to 19:00
-BOOKING_START_MINUTE = int(os.environ.get('BOOKING_MINUTES',0))
-COURT = os.environ.get('BOOKING_COURT',"Court3")  # Default to Court1 if not specified
+DATE = os.environ.get('BOOKING_DATE')
+BOOKING_START_HOUR = int(os.environ.get('BOOKING_HOUR'))  # Default to 19:00
+BOOKING_START_MINUTE = int(os.environ.get('BOOKING_MINUTES'))
+COURT = os.environ.get('BOOKING_COURT')  # Default to Court1 if not specified
 
 # Check if username and password are available
 if not USERNAME or not PASSWORD:
