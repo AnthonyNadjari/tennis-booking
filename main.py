@@ -148,25 +148,23 @@ def main():
         new_query = urlencode(query, doseq=True)
         booking_url = urlunparse(parsed._replace(query=new_query))
     
-        # Heure locale
-        now = datetime.now()
-        
-        # Fuseau horaire local (par nom)
-        logging.info("Fuseau horaire local :", now)
     
         # Wait until specific times to perform actions
-        timer('19:55')
+        #timer('18:55') #because git is late
+        timer('19:20') #because git is late
 
         # Initialize the WebDriver
         driver = webdriver.Chrome(service=Service(CHROME_DRIVER_PATH), options=options)
         wait = WebDriverWait(driver, 10)
 
         # Login
-        timer('19:57')
+        #timer('18:57')
+        timer('19:21')
         initialize()
 
         # Book
-        timer('20:00')
+        #timer('19:00')
+        timer('19:22')
         driver.get(booking_url)
 
         
