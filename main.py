@@ -147,7 +147,15 @@ def main():
         query["ResourceID"] = [resource_ids[court]]  # Use the selected court
         new_query = urlencode(query, doseq=True)
         booking_url = urlunparse(parsed._replace(query=new_query))
-
+        import time
+    
+        # Heure locale
+        now = datetime.now()
+        
+        # Fuseau horaire local (par nom)
+        local_timezone = time.tzname  # tuple (standard_time, daylight_time)
+        print("Fuseau horaire local :", local_timezone)
+    
         # Wait until specific times to perform actions
         timer('19:55')
 
@@ -192,14 +200,5 @@ def main():
 # Define SAMPLE_URL if not already defined from the previous script context
 SAMPLE_URL = 'https://clubspark.lta.org.uk/SouthwarkPark/Booking/Book?Contacts%5B0%5D.IsPrimary=true&Contacts%5B0%5D.IsJunior=false&Contacts%5B0%5D.IsPlayer=true&ResourceID=ad7d3c7b-9dff-4442-bb18-4761970f11c0&Date=2025-06-28&SessionID=c3791901-4d64-48f5-949d-85d01c4633b9&StartTime=1140&EndTime=1200&Category=0&SubCategory=0&VenueID=4123ed12-8dd6-4f48-a706-6ab2fbde16ba&ResourceGroupID=4123ed12-8dd6-4f48-a706-6ab2fbde16ba'
 
-if __name__ == "__main__":
-    import time
-
-    # Heure locale
-    now = datetime.now()
-    
-    # Fuseau horaire local (par nom)
-    local_timezone = time.tzname  # tuple (standard_time, daylight_time)
-    print("Fuseau horaire local :", local_timezone)
-    
+if __name__ == "__main__":    
     main()
