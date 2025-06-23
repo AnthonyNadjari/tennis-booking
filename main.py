@@ -151,7 +151,7 @@ def main():
     
         # Wait until specific times to perform actions
         #timer('18:55') #because git is late
-        timer('19:20') #because git is late
+        #timer('19:20') #because git is late
 
         # Initialize the WebDriver
         driver = webdriver.Chrome(service=Service(CHROME_DRIVER_PATH), options=options)
@@ -159,12 +159,12 @@ def main():
 
         # Login
         #timer('18:57')
-        timer('19:21')
+        #timer('19:21')
         initialize()
 
         # Book
         #timer('19:00')
-        timer('19:22')
+        #timer('19:22')
         driver.get(booking_url)
 
         
