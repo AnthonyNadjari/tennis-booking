@@ -63,14 +63,14 @@ booking_date = datetime.strptime(DATE, '%Y-%m-%d')
 
 # Configuration Chrome
 options = webdriver.ChromeOptions()
-options.add_argument("--headless")
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
-options.add_argument("--disable-gpu")
-options.add_argument("--disable-blink-features=AutomationControlled")
-options.add_experimental_option("excludeSwitches", ["enable-automation"])
-options.add_experimental_option('useAutomationExtension', False)
-options.page_load_strategy = 'eager'  # Load resources only when needed
+#options.add_argument("--headless")
+##options.add_argument("--no-sandbox")
+#options.add_argument("--disable-dev-shm-usage")
+#options.add_argument("--disable-gpu")
+#options.add_argument("--disable-blink-features=AutomationControlled")
+#options.add_experimental_option("excludeSwitches", ["enable-automation"])
+#options.add_experimental_option('useAutomationExtension', False)
+#options.page_load_strategy = 'eager'  # Load resources only when needed
 
 def timer(target_time_str):
     """
