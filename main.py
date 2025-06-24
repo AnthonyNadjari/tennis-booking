@@ -188,7 +188,7 @@ def main():
         enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', CARD_CVC)
 
         click_on('//*[@id="cs-stripe-elements-submit-button"]')
-        time.sleep(5)
+        a = input()
     except Exception as e:
         logging.error(f"An error occurred in the main flow: {e}")
     finally:
