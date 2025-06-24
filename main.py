@@ -186,12 +186,6 @@ def main():
         timer('19:00')
         driver.get(booking_url)
 
-def main():
-    global driver, wait
-    try:
-        # Booking time setup and other initial configurations remain unchanged
-
-        # Code to navigate, log in, and book remains unchanged until the payment section
 
         # Pay
         wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="paynow"]')))
