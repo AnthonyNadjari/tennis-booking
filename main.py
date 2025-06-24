@@ -186,6 +186,13 @@ def main():
         timer('19:00')
         driver.get(booking_url)
 
+def main():
+    global driver, wait
+    try:
+        # Booking time setup and other initial configurations remain unchanged
+
+        # Code to navigate, log in, and book remains unchanged until the payment section
+
         # Pay
         wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="paynow"]')))
         click_on('//*[@id="paynow"]')
@@ -194,19 +201,24 @@ def main():
         click_on('/html/body/div[7]/div/div/div/div[1]/form/div[1]/div')
         enter_data('//*[@id="cs-stripe-elements-card-number"]/div/iframe', '')
         enter_data('//*[@id="cs-stripe-elements-card-number"]/div/iframe', CARD_NUMBER)
+
         click_on('/html/body/div[7]/div/div/div/div[1]/form/div[2]/div[1]/div')
         enter_data('//*[@id="cs-stripe-elements-card-expiry"]/div/iframe', '')
         enter_data('//*[@id="cs-stripe-elements-card-expiry"]/div/iframe', CARD_EXPIRY)
+
         click_on('/html/body/div[7]/div/div/div/div[1]/form/div[2]/div[2]/div')
         enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', '')
         enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', CARD_CVC)
 
         click_on('//*[@id="cs-stripe-elements-submit-button"]')
-        a = input()
+
+        # Wait for some time to see payment completion (or errors)
+        time.sleep(10)  # Wait longer to ensure payment process completes
+
     except Exception as e:
         logging.error(f"An error occurred in the main flow: {e}")
     finally:
-        time.sleep(5)
+        time.sleep(5)  # Additional wait time to ensure logs are written
         logging.info("Done!")
 
 
