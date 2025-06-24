@@ -131,16 +131,28 @@ def initialize():
         enter_data('//*[@id="154:0"]', USERNAME)
         enter_data('//*[@id="input-2"]', PASSWORD)
         time.sleep(5)
+
+        # Try to handle cookie dialog more robustly
         try:
-            wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.osano-cm-dialog__close.osano-cm-close')))
-            driver.find_element(By.CSS_SELECTOR, 'button.osano-cm-dialog__close.osano-cm-close').click()
-        except:
-            pass
+            deny_button = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'button.osano-cm-deny')))
+            deny_button.click()
+            logging.info("Successfully clicked deny button on cookie dialog")
+        except Exception as e:
+            logging.info("No cookie dialog to deny or error handling it: " + str(e))
+
+        try:
+            # Also try to find and click close button if present
+            close_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.osano-cm-dialog__close')))
+            close_button.click()
+            logging.info("Successfully closed cookie dialog")
+        except Exception as e:
+            logging.info("No cookie dialog close button found or error closing it: " + str(e))
+
+        # Wait for a few seconds to ensure the login process is complete
+        time.sleep(5)
 
     except Exception as e:
-
         logging.error(f"Error during initialization: {e}")
-
 
 def main():
     global driver, wait
