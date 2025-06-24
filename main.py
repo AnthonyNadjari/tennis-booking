@@ -131,9 +131,11 @@ def initialize():
         enter_data('//*[@id="154:0"]', USERNAME)
         enter_data('//*[@id="input-2"]', PASSWORD)
         time.sleep(5)
-        #wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.osano-cm-dialog__close.osano-cm-close')))
-        #driver.find_element(By.CSS_SELECTOR, 'button.osano-cm-dialog__close.osano-cm-close').click()
-
+        try:
+            wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.osano-cm-dialog__close.osano-cm-close')))
+            driver.find_element(By.CSS_SELECTOR, 'button.osano-cm-dialog__close.osano-cm-close').click()
+        except:
+            pass
 
     except Exception as e:
 
