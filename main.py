@@ -23,7 +23,7 @@ logging.basicConfig(
 )
 
 # Constants for configuration
-ACCOUNT_NUMBER = os.environ.get('ACCOUNT')  # Default to account 1 if not specified
+ACCOUNT_NUMBER = os.environ.get('ACCOUNT')
 USERNAME = os.environ.get('TENNIS_USERNAME2') if ACCOUNT_NUMBER == '2' else os.environ.get('TENNIS_USERNAME')
 PASSWORD = os.environ.get('TENNIS_PASSWORD')
 CARD_NUMBER = os.environ.get('CARD_NUMBER')
@@ -31,9 +31,9 @@ CARD_EXPIRY = os.environ.get('CARD_EXPIRY')
 CARD_CVC = os.environ.get('CARD_CVC')
 CHROME_DRIVER_PATH = ChromeDriverManager().install()
 DATE = os.environ.get('BOOKING_DATE')
-BOOKING_START_HOUR = int(os.environ.get('BOOKING_HOUR'))  # Default to 19:00
+BOOKING_START_HOUR = int(os.environ.get('BOOKING_HOUR'))
 BOOKING_START_MINUTE = int(os.environ.get('BOOKING_MINUTES'))
-COURT = os.environ.get('BOOKING_COURT')  # Default to Court1 if not specified
+COURT = os.environ.get('BOOKING_COURT')
 
 # Check if username and password are available
 if not USERNAME or not PASSWORD:
@@ -58,7 +58,7 @@ resource_ids = {
 }
 
 start_time = TOTAL_MINUTES
-court = COURT  # Use the selected court
+court = COURT
 booking_date = datetime.strptime(DATE, '%Y-%m-%d')
 
 # Configuration Chrome
@@ -70,16 +70,11 @@ options.add_argument("--disable-gpu")
 options.add_argument("--disable-blink-features=AutomationControlled")
 options.add_experimental_option("excludeSwitches", ["enable-automation"])
 options.add_experimental_option('useAutomationExtension', False)
-options.page_load_strategy = 'eager'  # Load resources only when needed
+options.page_load_strategy = 'eager'
 
 
 def timer(target_time_str):
-    """
-    Wait until a specific time of day.
-
-    Args:
-        target_time_str (str): Time in "HH:MM" format to wait until.
-    """
+    """Wait until a specific time of day."""
     target_time = datetime.strptime(target_time_str, "%H:%M").replace(
         year=datetime.now().year,
         month=datetime.now().month,
@@ -92,13 +87,7 @@ def timer(target_time_str):
 
 
 def enter_data(element_xpath, input_text):
-    """
-    Enter data into a field specified by an XPath and send a return key.
-
-    Args:
-        element_xpath (str): XPath of the input field.
-        input_text (str): Text to input into the field.
-    """
+    """Enter data into a field specified by an XPath and send a return key."""
     try:
         wait.until(EC.element_to_be_clickable((By.XPATH, element_xpath)))
         driver.find_element(By.XPATH, element_xpath).send_keys(input_text, Keys.RETURN)
@@ -107,12 +96,7 @@ def enter_data(element_xpath, input_text):
 
 
 def click_on(element_xpath):
-    """
-    Click on an element specified by an XPath.
-
-    Args:
-        element_xpath (str): XPath of the element to click.
-    """
+    """Click on an element specified by an XPath."""
     try:
         wait.until(EC.element_to_be_clickable((By.XPATH, element_xpath)))
         driver.find_element(By.XPATH, element_xpath).click()
@@ -120,39 +104,82 @@ def click_on(element_xpath):
         logging.error(f"Error clicking element: {e}")
 
 
+def wait_for(element_xpath):
+    """Wait for an element to be clickable."""
+    try:
+        wait.until(EC.element_to_be_clickable((By.XPATH, element_xpath)))
+    except TimeoutException as e:
+        logging.error(f"Timeout waiting for element: {e}")
+
+
 def initialize():
-    """
-    Initialize the webdriver, navigate to the login page, and log in.
-    """
+    """Initialize the webdriver, navigate to the login page, and log in."""
     try:
         driver.get(
             r"https://clubspark.lta.org.uk/SouthwarkPark/Account/SignIn?returnUrl=https%3a%2f%2fclubspark.lta.org.uk%2fSouthwarkPark%2fBooking%2fBookByDate")
         click_on('/html/body/div[3]/div[1]/div[2]/div[1]/div[2]/form/button')
         enter_data('//*[@id="154:0"]', USERNAME)
         enter_data('//*[@id="input-2"]', PASSWORD)
-        time.sleep(5)
 
-        # Try to handle cookie dialog more robustly
+        # Handle cookie dialog
         try:
-            deny_button = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'button.osano-cm-deny')))
-            deny_button.click()
-            logging.info("Successfully clicked deny button on cookie dialog")
-        except Exception as e:
-            logging.info("No cookie dialog to deny or error handling it: " + str(e))
-
-        try:
-            # Also try to find and click close button if present
-            close_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.osano-cm-dialog__close')))
-            close_button.click()
+            wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.osano-cm-dialog__close.osano-cm-close')))
+            driver.find_element(By.CSS_SELECTOR, 'button.osano-cm-dialog__close.osano-cm-close').click()
             logging.info("Successfully closed cookie dialog")
         except Exception as e:
-            logging.info("No cookie dialog close button found or error closing it: " + str(e))
+            logging.info("No cookie dialog found or error closing it: " + str(e))
 
-        # Wait for a few seconds to ensure the login process is complete
         time.sleep(5)
 
     except Exception as e:
         logging.error(f"Error during initialization: {e}")
+
+
+def handle_payment():
+    """Handle the payment process with iframe switching."""
+    try:
+        # Wait for and click pay now button
+        wait_for('//*[@id="paynow"]')
+        click_on('//*[@id="paynow"]')
+
+        # Handle card number iframe
+        wait_for('//*[@id="cs-stripe-elements-card-number"]/div/iframe')
+        card_number_iframe = driver.find_element(By.XPATH, '//*[@id="cs-stripe-elements-card-number"]/div/iframe')
+        driver.switch_to.frame(card_number_iframe)
+        wait_for('//*[@id="root"]/form/span[2]/div/div/div[2]/span/input')
+        input_field = driver.find_element(By.XPATH, '//*[@id="root"]/form/span[2]/div/div/div[2]/span/input')
+        input_field.clear()
+        input_field.send_keys(CARD_NUMBER)
+        driver.switch_to.default_content()
+        logging.info("Card number entered successfully")
+
+        # Handle card expiry iframe
+        card_expiry_iframe = driver.find_element(By.XPATH, '//*[@id="cs-stripe-elements-card-expiry"]/div/iframe')
+        driver.switch_to.frame(card_expiry_iframe)
+        wait_for('//*[@id="root"]/form/span[2]/div/span/input')
+        input_field = driver.find_element(By.XPATH, '//*[@id="root"]/form/span[2]/div/span/input')
+        input_field.clear()
+        input_field.send_keys(CARD_EXPIRY)
+        driver.switch_to.default_content()
+        logging.info("Card expiry entered successfully")
+
+        # Handle CVC iframe
+        cvc_iframe = driver.find_element(By.XPATH, '//*[@id="cs-stripe-elements-card-cvc"]/div/iframe')
+        driver.switch_to.frame(cvc_iframe)
+        wait_for('//*[@id="root"]/form/span[2]/div/span/input')
+        input_field = driver.find_element(By.XPATH, '//*[@id="root"]/form/span[2]/div/span/input')
+        input_field.clear()
+        input_field.send_keys(CARD_CVC)
+        driver.switch_to.default_content()
+        logging.info("CVC entered successfully")
+
+        # Submit payment
+        click_on('//*[@id="cs-stripe-elements-submit-button"]')
+        logging.info("Payment submitted")
+
+    except Exception as e:
+        logging.error(f"Error during payment process: {e}")
+
 
 def main():
     global driver, wait
@@ -162,18 +189,15 @@ def main():
         query = parse_qs(parsed.query)
         query["Date"] = [booking_date.strftime(format='%Y-%m-%d')]
         query["StartTime"] = [str(start_time)]
-
         query["EndTime"] = [str(start_time + 60)]
-        print("query",query)
-
-        query["ResourceID"] = [resource_ids[court]]  # Use the selected court
+        query["ResourceID"] = [resource_ids[court]]
 
         new_query = urlencode(query, doseq=True)
         booking_url = urlunparse(parsed._replace(query=new_query))
 
         # Wait until specific times to perform actions
-        timer('18:55') #because git is late
-        
+        timer('18:55')  # because git is late
+
         # Initialize the WebDriver
         driver = webdriver.Chrome(service=Service(CHROME_DRIVER_PATH), options=options)
         wait = WebDriverWait(driver, 10)
@@ -185,38 +209,25 @@ def main():
         # Book
         timer('19:00')
         driver.get(booking_url)
+        logging.info(f"Navigated to booking URL: {booking_url}")
 
+        # Handle payment
+        handle_payment()
 
-        # Pay
-        wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="paynow"]')))
-        click_on('//*[@id="paynow"]')
-
-        wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="cs-stripe-elements-card-number"]/div/iframe')))
-        click_on('/html/body/div[7]/div/div/div/div[1]/form/div[1]/div')
-        enter_data('//*[@id="cs-stripe-elements-card-number"]/div/iframe', '')
-        enter_data('//*[@id="cs-stripe-elements-card-number"]/div/iframe', CARD_NUMBER)
-
-        click_on('/html/body/div[7]/div/div/div/div[1]/form/div[2]/div[1]/div')
-        enter_data('//*[@id="cs-stripe-elements-card-expiry"]/div/iframe', '')
-        enter_data('//*[@id="cs-stripe-elements-card-expiry"]/div/iframe', CARD_EXPIRY)
-
-        click_on('/html/body/div[7]/div/div/div/div[1]/form/div[2]/div[2]/div')
-        enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', '')
-        enter_data('//*[@id="cs-stripe-elements-card-cvc"]/div/iframe', CARD_CVC)
-
-        click_on('//*[@id="cs-stripe-elements-submit-button"]')
-
-        # Wait for some time to see payment completion (or errors)
-        time.sleep(10)  # Wait longer to ensure payment process completes
+        # Wait for payment completion
+        time.sleep(10)
+        logging.info("Payment process completed")
 
     except Exception as e:
         logging.error(f"An error occurred in the main flow: {e}")
     finally:
-        time.sleep(5)  # Additional wait time to ensure logs are written
+        time.sleep(5)
         logging.info("Done!")
+        if 'driver' in globals():
+            driver.quit()
 
 
-# Define SAMPLE_URL if not already defined from the previous script context
+# Define SAMPLE_URL
 SAMPLE_URL = 'https://clubspark.lta.org.uk/SouthwarkPark/Booking/Book?Contacts%5B0%5D.IsPrimary=true&Contacts%5B0%5D.IsJunior=false&Contacts%5B0%5D.IsPlayer=true&ResourceID=ad7d3c7b-9dff-4442-bb18-4761970f11c0&Date=2025-06-28&SessionID=c3791901-4d64-48f5-949d-85d01c4633b9&StartTime=1140&EndTime=1200&Category=0&SubCategory=0&VenueID=4123ed12-8dd6-4f48-a706-6ab2fbde16ba&ResourceGroupID=4123ed12-8dd6-4f48-a706-6ab2fbde16ba'
 
 if __name__ == "__main__":
