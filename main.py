@@ -221,7 +221,7 @@ def main():
     except Exception as e:
         logging.error(f"An error occurred in the main flow: {e}")
     finally:
-        time.sleep(5)
+        timer('19:05')
         logging.info("Done!")
         if 'driver' in globals():
             driver.quit()
